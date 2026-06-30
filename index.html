@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video Subtitle Overlay — local video with subtitles & metadata for screen sharing</title>
+<meta name="description" content="A single local HTML file that plays your video with synced subtitles and a constant metadata overlay — built for sharing a Chrome tab over Google Meet, Zoom, or any screen share.">
+<style>
+  :root {
+    --bg: #0e0f13; --panel: #171a21; --line: #262b36;
+    --accent: #4f8cff; --text: #e7eaf0; --muted: #8b93a3;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 22px; }
+
+  header {
+    border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; background: rgba(14,15,19,0.85);
+    backdrop-filter: blur(8px); z-index: 10;
+  }
+  header .wrap { display: flex; align-items: center; gap: 14px; height: 60px; }
+  header .brand { font-weight: 700; }
+  header nav { margin-left: auto; display: flex; gap: 18px; align-items: center; font-size: 14px; }
+  .btn {
+    display: inline-block; background: var(--accent); color: #fff;
+    padding: 9px 16px; border-radius: 8px; font-weight: 600; font-size: 14px;
+  }
+  .btn.ghost { background: #222733; border: 1px solid var(--line); color: var(--text); }
+  .btn:hover { text-decoration: none; opacity: 0.92; }
+
+  .hero { padding: 70px 0 50px; text-align: center; }
+  .hero h1 { font-size: 42px; line-height: 1.15; margin: 0 0 16px; letter-spacing: -0.5px; }
+  .hero p.lead { font-size: 19px; color: var(--muted); max-width: 640px; margin: 0 auto 28px; }
+  .hero .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+  /* CSS mock of the player */
+  .mock {
+    margin: 50px auto 0; max-width: 720px; aspect-ratio: 16/9;
+    background: linear-gradient(135deg, #1a2030, #0a0d14);
+    border: 1px solid var(--line); border-radius: 14px; position: relative; overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  }
+  .mock .play {
+    position: absolute; inset: 0; margin: auto; width: 0; height: 0;
+    border-style: solid; border-width: 22px 0 22px 38px;
+    border-color: transparent transparent transparent rgba(255,255,255,0.25);
+  }
+  .mock .m-meta {
+    position: absolute; top: 18px; left: 18px;
+    background: rgba(10,12,18,0.72); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px; padding: 10px 14px; font-size: 14px; text-align: left;
+    text-shadow: 0 1px 3px #000;
+  }
+  .mock .m-meta b { color: var(--accent); }
+  .mock .m-clock {
+    position: absolute; top: 18px; right: 18px;
+    background: rgba(10,12,18,0.72); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px; padding: 6px 12px; font-variant-numeric: tabular-nums; font-weight: 600;
+  }
+  .mock .m-sub {
+    position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%);
+    font-size: 22px; font-weight: 600; white-space: nowrap;
+  }
+  .mock .m-sub span { background: rgba(0,0,0,0.55); padding: 3px 12px; border-radius: 6px; }
+
+  section { padding: 46px 0; border-top: 1px solid var(--line); }
+  section h2 { font-size: 26px; margin: 0 0 8px; }
+  section .sub { color: var(--muted); margin: 0 0 26px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px,1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14.5px; }
+
+  pre {
+    background: #0a0d14; border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px; overflow-x: auto; font: 13.5px/1.6 ui-monospace, Menlo, monospace; color: #cdd6e6;
+  }
+  code { font-family: ui-monospace, Menlo, monospace; color: var(--accent); }
+  ol.steps { padding-left: 20px; } ol.steps li { margin: 8px 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  kbd {
+    display: inline-block; background: #2b3140; border: 1px solid #3a4150; border-bottom-width: 2px;
+    border-radius: 5px; padding: 1px 7px; font: 12px/1.5 ui-monospace, Menlo, monospace; min-width: 16px; text-align: center;
+  }
+  .note { background: #16202e; border-left: 3px solid var(--accent); padding: 12px 16px; border-radius: 0 8px 8px 0; color: #cdd6e6; font-size: 14.5px; }
+
+  footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <span class="brand">🎬 Video Subtitle Overlay</span>
+    <nav>
+      <a href="#how">How it works</a>
+      <a href="#keys">Shortcuts</a>
+      <a href="https://github.com/nipunbatra/video-subtitle-overlay">GitHub</a>
+      <a class="btn" href="app.html">Launch app →</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="hero">
+    <h1>Play local video with subtitles<br>and a constant metadata overlay</h1>
+    <p class="lead">
+      A single, self-contained HTML file. Pick a folder, and each video auto-loads its matching
+      subtitles and metadata — all drawn into the page, so they show up when you share a Chrome tab
+      over Google Meet, Zoom, or any screen share.
+    </p>
+    <div class="cta">
+      <a class="btn" href="app.html">Launch the app</a>
+      <a class="btn ghost" href="https://github.com/nipunbatra/video-subtitle-overlay">View source</a>
+    </div>
+
+    <div class="mock" aria-hidden="true">
+      <div class="m-meta"><b>Lecture:</b> Introduction to Machine Learning, 14<br><b>Date:</b> 20 Feb 2024</div>
+      <div class="m-clock">12:04 <span style="color:var(--muted)">/ 48:31</span></div>
+      <div class="play"></div>
+      <div class="m-sub"><span>…and so the overlay stays visible the whole time.</span></div>
+    </div>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <h2>What it does</h2>
+    <p class="sub">Everything renders inside the browser tab — nothing extra to install.</p>
+    <div class="grid">
+      <div class="card"><h3>Auto-matched files</h3><p>Pick a folder; each video finds its same-named <code>.vtt</code> subtitles and <code>.json</code>/<code>.txt</code> metadata automatically.</p></div>
+      <div class="card"><h3>Constant metadata</h3><p>A persistent overlay (title, date, anything) stays on screen for the whole clip — perfect for context during a lecture or talk.</p></div>
+      <div class="card"><h3>Synced subtitles</h3><p>Custom WebVTT renderer styled for readability on a shared screen. Resize and reposition on the fly.</p></div>
+      <div class="card"><h3>Live timecode</h3><p>An always-visible <code>current / duration</code> readout for the audience.</p></div>
+      <div class="card"><h3>Presentation mode</h3><p>One key hides all the chrome so the video fills the tab — clean to share.</p></div>
+      <div class="card"><h3>100% local & private</h3><p>No uploads, no server, no dependencies. Your files never leave your machine.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <p class="sub">Name the files with the same base name and drop them in a folder:</p>
+<pre>my-folder/
+├── talk.mp4      ← the video
+├── talk.vtt      ← subtitles  (optional)
+└── talk.json     ← metadata overlay  (optional, or talk.txt)</pre>
+    <p>Metadata as JSON renders as <code>key: value</code> lines:</p>
+<pre>{
+  "Lecture": "Introduction to Machine Learning, 14",
+  "Lecture Date": "20 Feb 2024"
+}</pre>
+    <p>A plain <code>talk.txt</code> is shown as-is. Then:</p>
+    <ol class="steps">
+      <li>Open the app and click <b>Pick folder</b> (or drag a folder onto the page).</li>
+      <li>Click a video in the sidebar — subtitles and metadata load automatically.</li>
+      <li>Share the <b>Chrome Tab</b> in Meet/Zoom and tick <b>“Also share tab audio.”</b></li>
+    </ol>
+    <div class="note">Playback uses the browser's codecs — <b>MP4 (H.264)</b> and <b>WebM</b> are the safe bets. <code>.mkv</code>/<code>.avi</code> may not decode in Chrome.</div>
+  </div>
+</section>
+
+<section id="keys">
+  <div class="wrap">
+    <h2>Keyboard shortcuts</h2>
+    <p class="sub">Also listed in the app's sidebar and on every button.</p>
+    <table>
+      <tr><th>Key</th><th>Action</th></tr>
+      <tr><td><kbd>Space</kbd></td><td>Play / pause</td></tr>
+      <tr><td><kbd>m</kbd></td><td>Metadata overlay on / off</td></tr>
+      <tr><td><kbd>s</kbd></td><td>Subtitles on / off</td></tr>
+      <tr><td><kbd>t</kbd></td><td>Timecode on / off</td></tr>
+      <tr><td><kbd>b</kbd></td><td>Subtitles bottom / top</td></tr>
+      <tr><td><kbd>+</kbd> <kbd>−</kbd></td><td>Subtitle size</td></tr>
+      <tr><td><kbd>]</kbd> <kbd>[</kbd></td><td>Metadata size</td></tr>
+      <tr><td><kbd>p</kbd></td><td>Presentation mode</td></tr>
+      <tr><td><kbd>⇧</kbd>+<kbd>→</kbd> / <kbd>⇧</kbd>+<kbd>←</kbd></td><td>Next / previous video</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="run">
+  <div class="wrap">
+    <h2>Run it locally</h2>
+    <p class="sub">No build step. Two ways:</p>
+    <ol class="steps">
+      <li>Use it online — just <a href="app.html">launch the hosted app</a> (file picking works over HTTPS too).</li>
+      <li>Or clone and open the file directly:</li>
+    </ol>
+<pre>git clone https://github.com/nipunbatra/video-subtitle-overlay
+open video-subtitle-overlay/app.html      # macOS</pre>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Open source under the MIT License ·
+    <a href="https://github.com/nipunbatra/video-subtitle-overlay">github.com/nipunbatra/video-subtitle-overlay</a>
+  </div>
+</footer>
+
+</body>
+</html>

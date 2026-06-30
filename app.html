@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video + Subtitles + Metadata</title>
+<style>
+  :root {
+    --sub-size: 34px;
+    --meta-size: 18px;
+    --bg: #0e0f13;
+    --panel: #171a21;
+    --line: #262b36;
+    --accent: #4f8cff;
+    --text: #e7eaf0;
+    --muted: #8b93a3;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "header header" "side main";
+    height: 100vh;
+  }
+  header {
+    grid-area: header;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 14px; margin: 0; font-weight: 600; }
+  .spacer { flex: 1; }
+  button, label.btn {
+    background: #222733;
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 7px 11px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button:hover, label.btn:hover { background: #2b3140; }
+  button kbd {
+    margin-left: 7px;
+    padding: 0 5px;
+    font: 10px/1.4 ui-monospace, Menlo, monospace;
+    background: #11151d;
+    border: 1px solid #3a4150;
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    color: var(--muted);
+    vertical-align: middle;
+  }
+  button.primary kbd { background: rgba(0,0,0,0.25); border-color: rgba(255,255,255,0.3); color: #fff; }
+  button.primary, label.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  input[type=file] { display: none; }
+
+  aside {
+    grid-area: side;
+    border-right: 1px solid var(--line);
+    background: var(--panel);
+    overflow-y: auto;
+  }
+  .hint { padding: 14px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+  .hint code { color: var(--accent); }
+  .keys { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .keys-title { color: var(--text); font-weight: 600; margin-bottom: 8px; }
+  .keys > div { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+  kbd {
+    display: inline-block;
+    background: #2b3140;
+    border: 1px solid #3a4150;
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    padding: 1px 6px;
+    font: 11px/1.4 ui-monospace, Menlo, monospace;
+    color: var(--text);
+    min-width: 14px;
+    text-align: center;
+  }
+  .item {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+  }
+  .item:hover { background: #1f2430; }
+  .item.active { background: #243049; border-left: 3px solid var(--accent); padding-left: 11px; }
+  .item .name { font-weight: 600; word-break: break-word; }
+  .item .dir { font-size: 11px; color: var(--muted); margin-top: 2px; word-break: break-word; }
+  .item .tags { margin-top: 4px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag { font-size: 10.5px; padding: 1px 6px; border-radius: 999px; background: #2b3140; color: var(--muted); }
+  .tag.on { background: #1d3a2a; color: #6ee7a8; }
+  .tag.meta.on { background: #3a2f1d; color: #f0c674; }
+
+  main {
+    grid-area: main;
+    position: relative;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .stage { position: relative; width: 100%; height: 100%; }
+  video { width: 100%; height: 100%; background: #000; display: block; }
+
+  /* Metadata overlay (constant) */
+  #meta {
+    position: absolute;
+    top: 18px; left: 18px;
+    max-width: 46%;
+    background: rgba(10,12,18,0.72);
+    backdrop-filter: blur(3px);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: var(--meta-size);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    pointer-events: none;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  }
+  #meta .k { color: var(--accent); font-weight: 600; }
+  #meta:empty { display: none; }
+
+  /* Live timecode */
+  #clock {
+    position: absolute;
+    top: 18px; right: 18px;
+    background: rgba(10,12,18,0.72);
+    backdrop-filter: blur(3px);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-variant-numeric: tabular-nums;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    pointer-events: none;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  }
+  #clock.hide { display: none; }
+  #clock .dur { color: var(--muted); font-weight: 500; }
+
+  /* Subtitle overlay (synced) */
+  #subs {
+    position: absolute;
+    left: 50%; bottom: 6%;
+    transform: translateX(-50%);
+    max-width: 88%;
+    text-align: center;
+    font-size: var(--sub-size);
+    font-weight: 600;
+    line-height: 1.3;
+    color: #fff;
+    text-shadow: 0 2px 4px #000, 0 0 6px #000;
+    pointer-events: none;
+    white-space: pre-wrap;
+  }
+  #subs span {
+    background: rgba(0,0,0,0.55);
+    padding: 2px 12px;
+    border-radius: 6px;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+  #subs.top { top: 8%; bottom: auto; }
+  #subs:empty { display: none; }
+
+  .placeholder { color: var(--muted); text-align: center; padding: 40px; }
+
+  /* Presentation mode: hide chrome, video fills tab */
+  body.present { grid-template-columns: 0 1fr; grid-template-rows: 0 1fr; }
+  body.present header, body.present aside { display: none; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 Video + Subs + Metadata</h1>
+  <label class="btn primary">Pick folder
+    <input type="file" id="dirInput" webkitdirectory directory multiple>
+  </label>
+  <label class="btn">Pick files
+    <input type="file" id="fileInput" multiple accept="video/*,.vtt,.json,.txt">
+  </label>
+  <div class="spacer"></div>
+  <button id="metaToggle" title="Toggle metadata"><span class="lbl">Metadata: on</span><kbd>m</kbd></button>
+  <button id="subToggle" title="Toggle subtitles"><span class="lbl">Subs: on</span><kbd>s</kbd></button>
+  <button id="clockToggle" title="Toggle timecode"><span class="lbl">Time: on</span><kbd>t</kbd></button>
+  <button id="subPos" title="Subtitle position"><span class="lbl">Subs: bottom</span><kbd>b</kbd></button>
+  <button id="subMinus" title="Smaller subtitles">Sub A−<kbd>−</kbd></button>
+  <button id="subPlus" title="Bigger subtitles">Sub A+<kbd>+</kbd></button>
+  <button id="metaMinus" title="Smaller metadata">Meta A−<kbd>[</kbd></button>
+  <button id="metaPlus" title="Bigger metadata">Meta A+<kbd>]</kbd></button>
+  <button id="presentBtn" title="Presentation mode">Present<kbd>p</kbd></button>
+</header>
+
+<aside id="list">
+  <div class="hint">
+    Click <b>Pick folder</b> and choose a folder containing your videos.<br><br>
+    For each video, files with the <b>same base name</b> are auto-loaded:<br>
+    • <code>talk.mp4</code> — the video<br>
+    • <code>talk.vtt</code> — subtitles<br>
+    • <code>talk.json</code> or <code>talk.txt</code> — metadata overlay<br><br>
+    You can also drag &amp; drop files (or a whole folder) anywhere on the page.<br><br>
+    Share via Chrome tab (with "Share tab audio") — subtitles and metadata are drawn in the tab, so they show in the shared view.
+
+    <div class="keys">
+      <div class="keys-title">Keyboard shortcuts</div>
+      <div><kbd>Space</kbd> play / pause</div>
+      <div><kbd>m</kbd> metadata on / off</div>
+      <div><kbd>s</kbd> subtitles on / off</div>
+      <div><kbd>t</kbd> timecode on / off</div>
+      <div><kbd>b</kbd> subtitles top / bottom</div>
+      <div><kbd>+</kbd> <kbd>−</kbd> subtitle size</div>
+      <div><kbd>]</kbd> <kbd>[</kbd> metadata size</div>
+      <div><kbd>p</kbd> presentation mode</div>
+      <div><kbd>⇧</kbd><kbd>→</kbd> / <kbd>⇧</kbd><kbd>←</kbd> next / prev video</div>
+      <div><kbd>←</kbd> <kbd>→</kbd> seek (video focused)</div>
+    </div>
+    <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px;">
+      <a href="https://github.com/nipunbatra/video-subtitle-overlay" style="color:var(--accent);text-decoration:none;">Docs &amp; source on GitHub →</a>
+    </div>
+  </div>
+</aside>
+
+<main id="stage">
+  <div class="stage">
+    <video id="video" controls playsinline></video>
+    <div id="meta"></div>
+    <div id="clock" class="hide">0:00</div>
+    <div id="subs"></div>
+    <div id="placeholder" class="placeholder">No video loaded</div>
+  </div>
+</main>
+
+<script>
+const videoExts = ['mp4','webm','m4v','ogv','ogg','mov','mkv','avi'];
+const $ = id => document.getElementById(id);
+const video = $('video');
+const metaEl = $('meta');
+const subsEl = $('subs');
+const clockEl = $('clock');
+const listEl = $('list');
+const placeholder = $('placeholder');
+
+let items = [];
+let cues = [];
+let activeIdx = -1;
+let curKey = null;
+let curObjUrl = null;
+let showMeta = true, showSubs = true, showClock = true;
+
+function fmtTime(s){
+  if (!isFinite(s)) s = 0;
+  s = Math.floor(s);
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+  const mm = h ? String(m).padStart(2,'0') : String(m);
+  return (h ? h+':' : '') + mm + ':' + String(sec).padStart(2,'0');
+}
+
+/* ---------- indexing files into video + sibling assets ---------- */
+function baseSplit(path){
+  const slash = path.lastIndexOf('/');
+  const dir = slash >= 0 ? path.slice(0, slash) : '';
+  const name = path.slice(slash+1);
+  const dot = name.lastIndexOf('.');
+  const base = dot >= 0 ? name.slice(0,dot) : name;
+  const ext = dot >= 0 ? name.slice(dot+1).toLowerCase() : '';
+  return {dir, base, ext};
+}
+
+function indexFiles(fileList){
+  const groups = new Map();
+  for (const f of fileList){
+    const path = f.webkitRelativePath || f.name;
+    const {dir, base, ext} = baseSplit(path);
+    const key = dir + '||' + base;
+    if (!groups.has(key)) groups.set(key, {dir, base, exts:{}});
+    groups.get(key).exts[ext] = f;
+  }
+  const out = [];
+  for (const g of groups.values()){
+    const vext = videoExts.find(e => g.exts[e]);
+    if (!vext) continue;
+    out.push({
+      name: g.base,
+      dir: g.dir,
+      video: g.exts[vext],
+      vtt: g.exts['vtt'] || null,
+      meta: g.exts['json'] || g.exts['txt'] || null,
+      metaType: g.exts['json'] ? 'json' : (g.exts['txt'] ? 'txt' : null),
+    });
+  }
+  out.sort((a,b)=> (a.dir+a.name).localeCompare(b.dir+b.name));
+  return out;
+}
+
+function addFiles(fileList){
+  const merged = indexFiles(fileList);
+  // merge with existing by dir+name (so dropping more files augments)
+  const map = new Map(items.map(i => [i.dir+'||'+i.name, i]));
+  for (const it of merged){
+    const k = it.dir+'||'+it.name;
+    if (map.has(k)){
+      const e = map.get(k);
+      e.video = it.video || e.video;
+      e.vtt = it.vtt || e.vtt;
+      if (it.meta){ e.meta = it.meta; e.metaType = it.metaType; }
+    } else { map.set(k, it); }
+  }
+  items = [...map.values()].sort((a,b)=> (a.dir+a.name).localeCompare(b.dir+b.name));
+  // keep the currently-playing item selected even though the list re-sorted
+  activeIdx = curKey ? items.findIndex(it => (it.dir+'||'+it.name) === curKey) : -1;
+  renderList();
+  if (activeIdx < 0 && items.length) load(0);
+}
+
+function renderList(){
+  if (!items.length){ return; }
+  const multiDir = new Set(items.map(it => it.dir)).size > 1;
+  listEl.replaceChildren();
+  items.forEach((it, i) => {
+    const div = document.createElement('div');
+    div.className = 'item' + (i===activeIdx ? ' active' : '');
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = it.name;
+    div.appendChild(name);
+    if (multiDir && it.dir){
+      const dir = document.createElement('div');
+      dir.className = 'dir';
+      dir.textContent = it.dir;
+      div.appendChild(dir);
+    }
+    const tags = document.createElement('div');
+    tags.className = 'tags';
+    tags.innerHTML =
+      `<span class="tag sub ${it.vtt?'on':''}">${it.vtt?'subtitles':'no subs'}</span>` +
+      `<span class="tag meta ${it.meta?'on':''}">${it.meta?('meta·'+it.metaType):'no meta'}</span>`;
+    div.appendChild(tags);
+    div.onclick = () => load(i);
+    listEl.appendChild(div);
+  });
+}
+
+/* ---------- VTT parsing & sync ---------- */
+function toSeconds(t){
+  t = t.trim().replace(',', '.');
+  const p = t.split(':').map(parseFloat);
+  if (p.length===3) return p[0]*3600 + p[1]*60 + p[2];
+  if (p.length===2) return p[0]*60 + p[1];
+  return p[0] || 0;
+}
+function parseVTT(text){
+  const res = [];
+  text = text.replace(/\r/g,'');
+  for (const block of text.split('\n\n')){
+    const lines = block.split('\n').filter(l => l.trim() !== '');
+    if (!lines.length) continue;
+    const timing = lines.find(l => l.includes('-->'));
+    if (!timing) continue;
+    const m = timing.match(/([0-9:.,]+)\s*-->\s*([0-9:.,]+)/);
+    if (!m) continue;
+    const idx = lines.indexOf(timing);
+    const txt = lines.slice(idx+1).join('\n').replace(/<[^>]+>/g,'');
+    res.push({ start: toSeconds(m[1]), end: toSeconds(m[2]), text: txt });
+  }
+  res.sort((a,b)=>a.start-b.start);
+  return res;
+}
+
+let lastCueText = null, lastClock = null;
+function renderSubs(txt){
+  subsEl.replaceChildren();
+  if (!txt) return;
+  txt.split('\n').forEach((line, i) => {
+    if (i) subsEl.appendChild(document.createElement('br'));
+    const span = document.createElement('span');
+    span.textContent = line;
+    subsEl.appendChild(span);
+  });
+}
+function tick(){
+  if (showClock && activeIdx >= 0){
+    const tc = fmtTime(video.currentTime) + '|' + fmtTime(video.duration);
+    if (tc !== lastClock){
+      clockEl.innerHTML = fmtTime(video.currentTime) +
+        ' <span class="dur">/ ' + fmtTime(video.duration) + '</span>';
+      lastClock = tc;
+    }
+  }
+  if (showSubs && cues.length){
+    const t = video.currentTime;
+    const cue = cues.find(c => t >= c.start && t <= c.end);
+    const txt = cue ? cue.text : '';
+    if (txt !== lastCueText){
+      renderSubs(txt);
+      lastCueText = txt;
+    }
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+/* ---------- metadata rendering ---------- */
+function renderMeta(text, type){
+  if (!showMeta || !text){ metaEl.innerHTML = ''; return; }
+  if (type === 'json'){
+    try {
+      const obj = JSON.parse(text);
+      metaEl.innerHTML = Object.entries(obj)
+        .map(([k,v]) => `<div><span class="k">${k}:</span> ${typeof v==='object'?JSON.stringify(v):v}</div>`)
+        .join('');
+      return;
+    } catch(e){ /* fall through to raw */ }
+  }
+  metaEl.textContent = text;
+}
+
+/* ---------- load a video ---------- */
+let curMetaText = null, curMetaType = null;
+function updateClockVisibility(){
+  clockEl.classList.toggle('hide', !(showClock && activeIdx >= 0));
+}
+async function load(i){
+  const it = items[i];
+  if (!it) return;
+  activeIdx = i;
+  curKey = it.dir + '||' + it.name;
+  renderList();
+  placeholder.classList.add('hidden');
+  lastClock = null;
+  updateClockVisibility();
+
+  if (curObjUrl) URL.revokeObjectURL(curObjUrl);
+  curObjUrl = URL.createObjectURL(it.video);
+  video.src = curObjUrl;
+  video.play().catch(()=>{});
+
+  cues = [];
+  lastCueText = null;
+  subsEl.innerHTML = '';
+  if (it.vtt){
+    try { cues = parseVTT(await it.vtt.text()); } catch(e){ console.warn('VTT parse failed', e); }
+  }
+
+  curMetaText = null; curMetaType = null;
+  if (it.meta){
+    curMetaText = await it.meta.text();
+    curMetaType = it.metaType;
+  }
+  renderMeta(curMetaText, curMetaType);
+}
+
+/* ---------- controls ---------- */
+$('dirInput').onchange = e => addFiles(e.target.files);
+$('fileInput').onchange = e => addFiles(e.target.files);
+
+const setLbl = (id, text) => { $(id).querySelector('.lbl').textContent = text; };
+$('metaToggle').onclick = () => {
+  showMeta = !showMeta;
+  setLbl('metaToggle', 'Metadata: ' + (showMeta?'on':'off'));
+  renderMeta(curMetaText, curMetaType);
+};
+$('subToggle').onclick = () => {
+  showSubs = !showSubs;
+  setLbl('subToggle', 'Subs: ' + (showSubs?'on':'off'));
+  if (!showSubs){ renderSubs(''); lastCueText=null; }
+};
+$('clockToggle').onclick = () => {
+  showClock = !showClock;
+  setLbl('clockToggle', 'Time: ' + (showClock?'on':'off'));
+  updateClockVisibility();
+};
+
+video.addEventListener('error', () => {
+  if (!video.currentSrc) return;
+  placeholder.textContent = 'Cannot play this file in Chrome (unsupported codec/format). Use MP4/H.264 or WebM.';
+  placeholder.classList.remove('hidden');
+});
+function setSize(varName, d, min){
+  const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue(varName));
+  document.documentElement.style.setProperty(varName, Math.max(min, cur + d) + 'px');
+}
+const setSubSize  = d => setSize('--sub-size', d, 14);
+const setMetaSize = d => setSize('--meta-size', d, 12);
+$('subPlus').onclick  = () => setSubSize(4);
+$('subMinus').onclick = () => setSubSize(-4);
+$('metaPlus').onclick  = () => setMetaSize(2);
+$('metaMinus').onclick = () => setMetaSize(-2);
+$('presentBtn').onclick = () => document.body.classList.toggle('present');
+$('subPos').onclick = () => {
+  const top = subsEl.classList.toggle('top');
+  setLbl('subPos', 'Subs: ' + (top ? 'top' : 'bottom'));
+};
+function togglePlay(){
+  if (activeIdx < 0) return;
+  if (video.paused) video.play().catch(()=>{}); else video.pause();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space'){ e.preventDefault(); togglePlay(); return; }
+  if (e.key === 'm') $('metaToggle').click();
+  else if (e.key === 's') $('subToggle').click();
+  else if (e.key === 't') $('clockToggle').click();
+  else if (e.key === 'b') $('subPos').click();
+  else if (e.key === 'p') $('presentBtn').click();
+  else if (e.key === '+' || e.key === '=') setSubSize(4);
+  else if (e.key === '-' || e.key === '_') setSubSize(-4);
+  else if (e.key === ']') setMetaSize(2);
+  else if (e.key === '[') setMetaSize(-2);
+  else if (e.key === 'ArrowRight' && e.shiftKey && activeIdx < items.length-1) load(activeIdx+1);
+  else if (e.key === 'ArrowLeft' && e.shiftKey && activeIdx > 0) load(activeIdx-1);
+});
+
+/* ---------- drag & drop (files or whole folders) ---------- */
+['dragover','drop'].forEach(ev => document.addEventListener(ev, e => e.preventDefault()));
+function readEntry(entry, out, path=''){
+  return new Promise(resolve => {
+    if (entry.isFile){
+      entry.file(f => {
+        try { Object.defineProperty(f, 'webkitRelativePath', { value: path + entry.name }); } catch(e){}
+        out.push(f); resolve();
+      }, () => resolve());
+    } else if (entry.isDirectory){
+      const reader = entry.createReader();
+      const batch = () => reader.readEntries(async ents => {
+        if (!ents.length){ resolve(); return; }
+        for (const ent of ents) await readEntry(ent, out, path + entry.name + '/');
+        batch();
+      }, () => resolve());
+      batch();
+    } else resolve();
+  });
+}
+document.addEventListener('drop', async e => {
+  const dtItems = e.dataTransfer.items;
+  if (dtItems && dtItems.length && dtItems[0].webkitGetAsEntry){
+    const entries = [...dtItems].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    if (entries.length){
+      const files = [];
+      for (const ent of entries) await readEntry(ent, files);
+      if (files.length){ addFiles(files); return; }
+    }
+  }
+  if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+});
+</script>
+</body>
+</html>
