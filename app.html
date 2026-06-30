@@ -211,6 +211,9 @@
   .mb-row { display: flex; gap: 8px; align-items: center; }
   .mb-row .mb-k { flex: 0 0 38%; }
   .mb-row .mb-v { flex: 1; }
+  .mb-grip { cursor: grab; color: var(--muted); padding: 0 2px; user-select: none; font-size: 14px; line-height: 1; }
+  .mb-grip:active { cursor: grabbing; }
+  .mb-row.mb-dragging { opacity: 0.45; }
   .mb-del { background: #222733; border: 1px solid var(--line); color: var(--muted); border-radius: 7px; cursor: pointer; padding: 7px 10px; }
   .mb-del:hover { color: #ff8a8a; border-color: #5a2b2b; }
   .mb-add { background: #222733; border: 1px solid var(--line); color: var(--text); border-radius: 7px; padding: 7px 11px; cursor: pointer; font-size: 13px; }
@@ -305,6 +308,8 @@
     <div class="mb-file-row"><input id="mbName" type="text" placeholder="talk" spellcheck="false"><span>.json</span></div>
     <div id="mbRows" class="mb-rows"></div>
     <button id="mbAdd" class="mb-add">+ Add field</button>
+    <button id="mbLoad" class="mb-add" type="button">Load existing .json…</button>
+    <input id="mbLoadInput" type="file" accept=".json,application/json" style="display:none">
     <div class="mb-preview-wrap">
       <div class="mb-preview-label">Overlay preview</div>
       <div id="mbPreview" class="mb-preview"></div>
@@ -547,20 +552,53 @@ $('dirInput').onchange = e => addFiles(e.target.files);
 $('fileInput').onchange = e => addFiles(e.target.files);
 
 const setLbl = (id, text) => { $(id).querySelector('.lbl').textContent = text; };
+
+/* ---------- persistent settings (localStorage) ---------- */
+const SETTINGS_KEY = 'vso-settings-v1';
+function cssPx(v){ return parseInt(getComputedStyle(document.documentElement).getPropertyValue(v)) || null; }
+function saveSettings(){
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+      showMeta, showSubs, showClock,
+      subTop: subsEl.classList.contains('top'),
+      subSize: cssPx('--sub-size'), metaSize: cssPx('--meta-size'),
+    }));
+  } catch(e){ /* storage unavailable — ignore */ }
+}
+function loadSettings(){
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); } catch(e){}
+  if (!s) return;
+  if (typeof s.showMeta  === 'boolean') showMeta  = s.showMeta;
+  if (typeof s.showSubs  === 'boolean') showSubs  = s.showSubs;
+  if (typeof s.showClock === 'boolean') showClock = s.showClock;
+  if (s.subSize)  document.documentElement.style.setProperty('--sub-size', s.subSize + 'px');
+  if (s.metaSize) document.documentElement.style.setProperty('--meta-size', s.metaSize + 'px');
+  if (s.subTop) subsEl.classList.add('top');
+  setLbl('metaToggle', 'Metadata: ' + (showMeta ? 'on' : 'off'));
+  setLbl('subToggle',  'Subs: ' + (showSubs ? 'on' : 'off'));
+  setLbl('clockToggle','Time: ' + (showClock ? 'on' : 'off'));
+  setLbl('subPos',     'Subs: ' + (subsEl.classList.contains('top') ? 'top' : 'bottom'));
+}
+loadSettings();
+
 $('metaToggle').onclick = () => {
   showMeta = !showMeta;
   setLbl('metaToggle', 'Metadata: ' + (showMeta?'on':'off'));
   renderMeta(curMetaText, curMetaType);
+  saveSettings();
 };
 $('subToggle').onclick = () => {
   showSubs = !showSubs;
   setLbl('subToggle', 'Subs: ' + (showSubs?'on':'off'));
   if (!showSubs){ renderSubs(''); lastCueText=null; }
+  saveSettings();
 };
 $('clockToggle').onclick = () => {
   showClock = !showClock;
   setLbl('clockToggle', 'Time: ' + (showClock?'on':'off'));
   updateClockVisibility();
+  saveSettings();
 };
 
 video.addEventListener('error', () => {
@@ -571,6 +609,7 @@ video.addEventListener('error', () => {
 function setSize(varName, d, min){
   const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue(varName));
   document.documentElement.style.setProperty(varName, Math.max(min, cur + d) + 'px');
+  saveSettings();
 }
 const setSubSize  = d => setSize('--sub-size', d, 14);
 const setMetaSize = d => setSize('--meta-size', d, 12);
@@ -582,6 +621,7 @@ $('presentBtn').onclick = () => document.body.classList.toggle('present');
 $('subPos').onclick = () => {
   const top = subsEl.classList.toggle('top');
   setLbl('subPos', 'Subs: ' + (top ? 'top' : 'bottom'));
+  saveSettings();
 };
 function togglePlay(){
   if (activeIdx < 0) return;
@@ -589,7 +629,11 @@ function togglePlay(){
 }
 
 document.addEventListener('keydown', e => {
-  if (mbOpen){ if (e.key === 'Escape') closeMb(); return; }
+  if (mbOpen){
+    if (e.key === 'Escape') closeMb();
+    else if (e.key === 'Tab') mbTrapFocus(e);
+    return;
+  }
   if (e.target.tagName === 'INPUT') return;
   if (e.code === 'Space'){ e.preventDefault(); togglePlay(); return; }
   if (e.key === 'm') $('metaToggle').click();
@@ -640,17 +684,22 @@ document.addEventListener('drop', async e => {
 
 /* ---------- metadata builder ---------- */
 const mbModal = $('mbModal'), mbRows = $('mbRows'), mbPreview = $('mbPreview'), mbName = $('mbName');
+let mbDragRow = null, mbLastFocus = null;
 
 function mbAddRow(k='', v=''){
   const row = document.createElement('div');
   row.className = 'mb-row';
+  const grip = document.createElement('span');
+  grip.className = 'mb-grip'; grip.textContent = '⠿'; grip.title = 'Drag to reorder'; grip.setAttribute('draggable', 'true');
+  grip.addEventListener('dragstart', e => { mbDragRow = row; row.classList.add('mb-dragging'); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; });
+  grip.addEventListener('dragend', () => { row.classList.remove('mb-dragging'); mbDragRow = null; mbUpdate(); });
   const ik = document.createElement('input'); ik.type='text'; ik.className='mb-k'; ik.placeholder='Key (e.g. Lecture)'; ik.value=k;
   const iv = document.createElement('input'); iv.type='text'; iv.className='mb-v'; iv.placeholder='Value'; iv.value=v;
   const del = document.createElement('button'); del.className='mb-del'; del.textContent='✕'; del.title='Remove field';
   ik.addEventListener('input', mbUpdate);
   iv.addEventListener('input', mbUpdate);
   del.addEventListener('click', () => { row.remove(); mbUpdate(); });
-  row.append(ik, iv, del);
+  row.append(grip, ik, iv, del);
   mbRows.appendChild(row);
 }
 function mbPairs(){
@@ -676,14 +725,19 @@ function mbUpdate(){
     mbPreview.appendChild(d);
   });
 }
+function mbFill(obj){
+  mbRows.replaceChildren();
+  Object.entries(obj).forEach(([k,v]) => mbAddRow(k, typeof v === 'object' ? JSON.stringify(v) : String(v)));
+  if (!Object.keys(obj).length) mbAddRow('', '');
+}
 function openMb(){
+  mbLastFocus = document.activeElement;
   mbRows.replaceChildren();
   let prefilled = false;
   if (curMetaType === 'json' && curMetaText){
     try {
       const o = JSON.parse(curMetaText);
-      Object.entries(o).forEach(([k,v]) => mbAddRow(k, typeof v === 'object' ? JSON.stringify(v) : String(v)));
-      prefilled = Object.keys(o).length > 0;
+      if (o && typeof o === 'object' && !Array.isArray(o)){ mbFill(o); prefilled = Object.keys(o).length > 0; }
     } catch(e){ /* fall through */ }
   }
   if (!prefilled){ mbAddRow('Lecture',''); mbAddRow('Date',''); }
@@ -692,8 +746,20 @@ function openMb(){
   mbUpdate();
   mbModal.classList.remove('hidden');
   mbOpen = true;
+  mbName.focus();
 }
-function closeMb(){ mbModal.classList.add('hidden'); mbOpen = false; }
+function closeMb(){
+  mbModal.classList.add('hidden');
+  mbOpen = false;
+  if (mbLastFocus && mbLastFocus.focus) mbLastFocus.focus();
+}
+function mbTrapFocus(e){
+  const f = [...mbModal.querySelectorAll('button, input')].filter(el => !el.disabled && el.offsetParent !== null);
+  if (!f.length) return;
+  const first = f[0], last = f[f.length - 1];
+  if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+}
 function mbSafeName(){
   const n = (mbName.value || 'metadata').trim().replace(/\.json$/i,'').replace(/[\\/:*?"<>|]/g,'_');
   return (n || 'metadata') + '.json';
@@ -702,7 +768,27 @@ function mbSafeName(){
 $('metaBuild').onclick = openMb;
 $('mbClose').onclick = closeMb;
 $('mbAdd').onclick = () => { mbAddRow(); mbUpdate(); };
+$('mbLoad').onclick = () => $('mbLoadInput').click();
+$('mbLoadInput').onchange = async e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  let o;
+  try { o = JSON.parse(await f.text()); }
+  catch(err){ alert('That file is not valid JSON.'); return; }
+  if (!o || typeof o !== 'object' || Array.isArray(o)){ alert('Expected a JSON object of key/value fields.'); return; }
+  mbFill(o);
+  mbName.value = f.name.replace(/\.json$/i, '');
+  mbUpdate();
+};
 mbModal.addEventListener('click', e => { if (e.target === mbModal) closeMb(); });
+mbRows.addEventListener('dragover', e => {
+  e.preventDefault();
+  if (!mbDragRow) return;
+  const rows = [...mbRows.querySelectorAll('.mb-row:not(.mb-dragging)')];
+  const after = rows.find(r => { const b = r.getBoundingClientRect(); return e.clientY <= b.top + b.height / 2; });
+  if (after) mbRows.insertBefore(mbDragRow, after); else mbRows.appendChild(mbDragRow);
+});
 
 $('mbApply').onclick = () => {
   curMetaText = mbJson(); curMetaType = 'json';
@@ -713,6 +799,7 @@ $('mbApply').onclick = () => {
   }
   showMeta = true; setLbl('metaToggle', 'Metadata: on');
   renderMeta(curMetaText, curMetaType);
+  saveSettings();
   closeMb();
 };
 $('mbCopy').onclick = async () => {
