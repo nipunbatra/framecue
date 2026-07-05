@@ -96,6 +96,13 @@
     box-decoration-break: clone; -webkit-box-decoration-break: clone;
   }
   .demo-frame .demo-subs.top { top: 9%; bottom: auto; }
+  .demo-frame .demo-subs.bg-light span   { background: rgba(0,0,0,0.35); }
+  .demo-frame .demo-subs.bg-faint span   { background: rgba(0,0,0,0.16); }
+  .demo-frame .demo-subs.bg-blur span    { background: rgba(0,0,0,0.28); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
+  .demo-frame .demo-subs.bg-glow span    { background: transparent; }
+  .demo-frame .demo-subs.bg-glow         { text-shadow: 0 1px 4px #000, 0 0 6px #000, 0 0 12px #000; }
+  .demo-frame .demo-subs.bg-outline span { background: transparent; }
+  .demo-frame .demo-subs.bg-outline      { text-shadow: -1.2px -1.2px 0 #000, 1.2px -1.2px 0 #000, -1.2px 1.2px 0 #000, 1.2px 1.2px 0 #000, 0 0 5px rgba(0,0,0,.55); }
 
   .demo { max-width: 860px; margin: 30px auto 6px; }
   .demo-cap { text-align: center; color: var(--muted); font-size: 15px; margin: 0 auto 14px; max-width: 700px; }
@@ -151,6 +158,7 @@
       <button class="tg on" data-act="subs">Subtitles</button>
       <button class="tg on" data-act="clock">Timecode</button>
       <button class="tg" data-act="pos">Subs: bottom</button>
+      <button class="tg" data-act="bg" title="Cycle subtitle background">BG: Solid</button>
       <button class="tg" data-act="subminus" title="Smaller subtitles">A−</button>
       <button class="tg" data-act="subplus" title="Bigger subtitles">A+</button>
     </div>
@@ -219,6 +227,7 @@
       <tr><td><kbd>s</kbd></td><td>Subtitles on / off</td></tr>
       <tr><td><kbd>t</kbd></td><td>Timecode on / off</td></tr>
       <tr><td><kbd>b</kbd></td><td>Subtitles bottom / top</td></tr>
+      <tr><td><kbd>g</kbd></td><td>Subtitle background (box → light → faint → frosted → no-box)</td></tr>
       <tr><td><kbd>+</kbd> <kbd>−</kbd></td><td>Subtitle size</td></tr>
       <tr><td><kbd>]</kbd> <kbd>[</kbd></td><td>Metadata size</td></tr>
       <tr><td><kbd>p</kbd></td><td>Presentation mode</td></tr>
@@ -276,6 +285,8 @@ iwr https://raw.githubusercontent.com/nipunbatra/video-subtitle-overlay/main/app
     [31.245,36.576, "Then the fitted line predicts y for a new x — that's linear regression."]
   ];
   var metaOn = true, subsOn = true, clockOn = true, subPx = 0;  // subPx 0 = CSS-controlled
+  var demoBgIdx = 0;
+  var DEMO_BG = [['','Solid'],['bg-light','Light'],['bg-faint','Faint'],['bg-blur','Frosted'],['bg-glow','No box · glow'],['bg-outline','No box · outline']];
 
   function fmt(t){ t = Math.max(0, Math.floor(t||0)); return Math.floor(t/60)+':'+String(t%60).padStart(2,'0'); }
   function setSub(txt){
@@ -302,6 +313,13 @@ iwr https://raw.githubusercontent.com/nipunbatra/video-subtitle-overlay/main/app
         case 'subs':  subsOn  = !subsOn;  btn.classList.toggle('on', subsOn);  if (!subsOn) setSub(''); break;
         case 'clock': clockOn = !clockOn; clock.classList.toggle('hidden', !clockOn); btn.classList.toggle('on', clockOn); break;
         case 'pos':   var top = subs.classList.toggle('top'); btn.textContent = 'Subs: ' + (top ? 'top' : 'bottom'); btn.classList.toggle('on', top); break;
+        case 'bg':
+          DEMO_BG.forEach(function(s){ if (s[0]) subs.classList.remove(s[0]); });
+          demoBgIdx = (demoBgIdx + 1) % DEMO_BG.length;
+          if (DEMO_BG[demoBgIdx][0]) subs.classList.add(DEMO_BG[demoBgIdx][0]);
+          btn.textContent = 'BG: ' + DEMO_BG[demoBgIdx][1];
+          btn.classList.toggle('on', demoBgIdx !== 0);
+          break;
         case 'subplus':  subPx = (subPx || 20) + 3; subs.style.fontSize = subPx + 'px'; break;
         case 'subminus': subPx = Math.max(12, (subPx || 20) - 3); subs.style.fontSize = subPx + 'px'; break;
       }

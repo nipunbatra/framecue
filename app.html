@@ -173,6 +173,14 @@
     box-decoration-break: clone;
     -webkit-box-decoration-break: clone;
   }
+  /* subtitle background styles (cycled with the BG button / g) */
+  #subs.bg-light span   { background: rgba(0,0,0,0.35); }
+  #subs.bg-faint span   { background: rgba(0,0,0,0.16); }
+  #subs.bg-blur span    { background: rgba(0,0,0,0.28); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
+  #subs.bg-glow span    { background: transparent; }
+  #subs.bg-glow         { text-shadow: 0 1px 4px #000, 0 0 6px #000, 0 0 12px #000; }
+  #subs.bg-outline span { background: transparent; }
+  #subs.bg-outline      { text-shadow: -1.2px -1.2px 0 #000, 1.2px -1.2px 0 #000, -1.2px 1.2px 0 #000, 1.2px 1.2px 0 #000, 0 0 5px rgba(0,0,0,.55); }
   #subs.top { top: 8%; bottom: auto; }
   #subs:empty { display: none; }
 
@@ -250,6 +258,7 @@
   <button id="subToggle" title="Toggle subtitles"><span class="lbl">Subs: on</span><kbd>s</kbd></button>
   <button id="clockToggle" title="Toggle timecode"><span class="lbl">Time: on</span><kbd>t</kbd></button>
   <button id="subPos" title="Subtitle position"><span class="lbl">Subs: bottom</span><kbd>b</kbd></button>
+  <button id="subBg" title="Subtitle background style"><span class="lbl">BG: Solid</span><kbd>g</kbd></button>
   <button id="subMinus" title="Smaller subtitles">Sub A−<kbd>−</kbd></button>
   <button id="subPlus" title="Bigger subtitles">Sub A+<kbd>+</kbd></button>
   <button id="metaMinus" title="Smaller metadata">Meta A−<kbd>[</kbd></button>
@@ -275,6 +284,7 @@
       <div><kbd>s</kbd> subtitles on / off</div>
       <div><kbd>t</kbd> timecode on / off</div>
       <div><kbd>b</kbd> subtitles top / bottom</div>
+      <div><kbd>g</kbd> subtitle background style</div>
       <div><kbd>+</kbd> <kbd>−</kbd> subtitle size</div>
       <div><kbd>]</kbd> <kbd>[</kbd> metadata size</div>
       <div><kbd>p</kbd> presentation mode</div>
@@ -553,6 +563,23 @@ $('fileInput').onchange = e => addFiles(e.target.files);
 
 const setLbl = (id, text) => { $(id).querySelector('.lbl').textContent = text; };
 
+/* ---------- subtitle background style ---------- */
+const SUB_BG = [
+  { cls: '',           label: 'Solid' },
+  { cls: 'bg-light',   label: 'Light' },
+  { cls: 'bg-faint',   label: 'Faint' },
+  { cls: 'bg-blur',    label: 'Frosted' },
+  { cls: 'bg-glow',    label: 'No box · glow' },
+  { cls: 'bg-outline', label: 'No box · outline' },
+];
+let subBgIdx = 0;
+function applySubBg(){
+  SUB_BG.forEach(s => { if (s.cls) subsEl.classList.remove(s.cls); });
+  const s = SUB_BG[subBgIdx] || SUB_BG[0];
+  if (s.cls) subsEl.classList.add(s.cls);
+  setLbl('subBg', 'BG: ' + s.label);
+}
+
 /* ---------- persistent settings (localStorage) ---------- */
 const SETTINGS_KEY = 'vso-settings-v1';
 function cssPx(v){ return parseInt(getComputedStyle(document.documentElement).getPropertyValue(v)) || null; }
@@ -561,6 +588,7 @@ function saveSettings(){
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({
       showMeta, showSubs, showClock,
       subTop: subsEl.classList.contains('top'),
+      subBg: subBgIdx,
       subSize: cssPx('--sub-size'), metaSize: cssPx('--meta-size'),
     }));
   } catch(e){ /* storage unavailable — ignore */ }
@@ -575,10 +603,12 @@ function loadSettings(){
   if (s.subSize)  document.documentElement.style.setProperty('--sub-size', s.subSize + 'px');
   if (s.metaSize) document.documentElement.style.setProperty('--meta-size', s.metaSize + 'px');
   if (s.subTop) subsEl.classList.add('top');
+  if (typeof s.subBg === 'number' && SUB_BG[s.subBg]) subBgIdx = s.subBg;
   setLbl('metaToggle', 'Metadata: ' + (showMeta ? 'on' : 'off'));
   setLbl('subToggle',  'Subs: ' + (showSubs ? 'on' : 'off'));
   setLbl('clockToggle','Time: ' + (showClock ? 'on' : 'off'));
   setLbl('subPos',     'Subs: ' + (subsEl.classList.contains('top') ? 'top' : 'bottom'));
+  applySubBg();
 }
 loadSettings();
 
@@ -623,6 +653,11 @@ $('subPos').onclick = () => {
   setLbl('subPos', 'Subs: ' + (top ? 'top' : 'bottom'));
   saveSettings();
 };
+$('subBg').onclick = () => {
+  subBgIdx = (subBgIdx + 1) % SUB_BG.length;
+  applySubBg();
+  saveSettings();
+};
 function togglePlay(){
   if (activeIdx < 0) return;
   if (video.paused) video.play().catch(()=>{}); else video.pause();
@@ -640,6 +675,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 's') $('subToggle').click();
   else if (e.key === 't') $('clockToggle').click();
   else if (e.key === 'b') $('subPos').click();
+  else if (e.key === 'g') $('subBg').click();
   else if (e.key === 'p') $('presentBtn').click();
   else if (e.key === '+' || e.key === '=') setSubSize(4);
   else if (e.key === '-' || e.key === '_') setSubSize(-4);
