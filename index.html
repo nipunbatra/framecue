@@ -107,6 +107,8 @@
   .demo { max-width: 860px; margin: 30px auto 6px; }
   .demo-cap { text-align: center; color: var(--muted); font-size: 15px; margin: 0 auto 14px; max-width: 700px; }
   .demo-cap .demo-hint { color: var(--text); }
+  .demo-switch { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; margin-bottom: 10px; }
+  .ds-label { color: var(--muted); font-size: 13px; margin-right: 2px; }
   .demo-bar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 14px; }
   .tg {
     background: #222733; color: var(--text); border: 1px solid var(--line);
@@ -169,7 +171,13 @@
   </div><!-- /hero -->
 
   <div class="demo" id="demo">
-    <p class="demo-cap">A ~37-second explainer animated with <b>Manim</b> (the engine behind 3Blue1Brown), narrated by <b>Gemini</b>. <span class="demo-hint">Toggle the overlays live — exactly what the app draws into the page:</span></p>
+    <p class="demo-cap">A ~37-second explainer, narrated by <b>Gemini</b>. <span class="demo-hint">Switch the clip (a <b>light</b> one makes the subtitle background obvious), toggle overlays, and cycle <b>BG</b> — exactly what the app draws into the page:</span></p>
+    <div class="demo-switch">
+      <span class="ds-label">Demo clip:</span>
+      <button class="tg on" data-vid="demo/demo-lecture.mp4" data-poster="demo/poster.jpg">Animation · dark</button>
+      <button class="tg" data-vid="demo/demo-lecture-light.mp4" data-poster="demo/poster-light.jpg">Animation · light</button>
+      <button class="tg" data-vid="demo/demo-lecture-slides.mp4" data-poster="demo/poster-slides.jpg">Lecture slides</button>
+    </div>
     <div class="demo-bar">
       <button class="tg on" data-act="meta">Metadata</button>
       <button class="tg on" data-act="subs">Subtitles</button>
@@ -328,6 +336,17 @@ iwr https://raw.githubusercontent.com/nipunbatra/video-subtitle-overlay/main/app
   requestAnimationFrame(tick);
 
   /* toggle controls — mirror the app's m / s / t / b / +/- shortcuts */
+  document.querySelectorAll('.demo-switch .tg').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.demo-switch .tg').forEach(function(b){ b.classList.remove('on'); });
+      btn.classList.add('on');
+      var srcEl = v.querySelector('source');
+      if (srcEl) srcEl.src = btn.dataset.vid; else v.src = btn.dataset.vid;
+      v.poster = btn.dataset.poster;
+      v.load();
+      var p = v.play(); if (p && p.catch) p.catch(function(){});
+    });
+  });
   document.querySelectorAll('.demo-bar .tg').forEach(function(btn){
     btn.addEventListener('click', function(){
       switch (btn.dataset.act){

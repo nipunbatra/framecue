@@ -10,7 +10,13 @@ show up in the shared view (unlike OS-level captions or a separate window).
 
 ## Demo
 
-A ~37-second **linear-regression explainer** — animated with [**Manim**](https://www.manim.community/) (the engine behind 3Blue1Brown) and narrated with **Gemini TTS**, with synced subtitles and a constant metadata overlay — lives in [`demo/`](demo/). Watch it on the **[live page](https://nipunbatra.github.io/video-subtitle-overlay/#demo)**, or open `demo/demo-lecture.mp4` (with its sibling `.vtt`/`.json`) in the app yourself.
+A ~37-second **linear-regression explainer** narrated with **Gemini TTS**, with synced subtitles and a constant metadata overlay, lives in [`demo/`](demo/). It ships in **three background styles** — all sharing the same narration/subtitles — so you can see how the subtitle overlay reads on different content:
+
+- `demo-lecture.mp4` — dark [Manim](https://www.manim.community/) animation (3Blue1Brown-style)
+- `demo-lecture-light.mp4` — the same animation on a **light** background
+- `demo-lecture-slides.mp4` — a **light lecture-slides** montage
+
+On the **[live page](https://nipunbatra.github.io/video-subtitle-overlay/#demo)** you can switch between them and cycle the **subtitle background** (`g`) — the effect is most visible on the light clips. Or open any `demo/*.mp4` (with its sibling `.vtt`/`.json`) in the app.
 
 https://github.com/nipunbatra/video-subtitle-overlay/raw/main/demo/demo-lecture.mp4
 
