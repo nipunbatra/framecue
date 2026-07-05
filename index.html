@@ -116,6 +116,23 @@
   .tg.on { background: rgba(79,140,255,0.16); border-color: var(--accent); color: #cfe0ff; }
   .hidden { display: none !important; }
 
+  .demo-lightpreview { max-width: 760px; margin: 14px auto 0; }
+  .lp-cap { color: var(--muted); font-size: 12.5px; text-align: center; margin: 0 0 6px; }
+  .lp-stage {
+    position: relative; height: 92px; border-radius: 10px; overflow: hidden;
+    background: linear-gradient(120deg, #eef1f7, #dbe2ee);
+    display: flex; align-items: center; justify-content: center; border: 1px solid var(--line);
+  }
+  .lp-subs { max-width: 92%; text-align: center; font-size: 18px; font-weight: 650; color: #fff; text-shadow: 0 2px 4px #000, 0 0 6px #000; }
+  .lp-subs span { background: rgba(0,0,0,0.55); padding: 2px 12px; border-radius: 6px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  .lp-subs.bg-light span   { background: rgba(0,0,0,0.35); }
+  .lp-subs.bg-faint span   { background: rgba(0,0,0,0.16); }
+  .lp-subs.bg-blur span    { background: rgba(0,0,0,0.28); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
+  .lp-subs.bg-glow span    { background: transparent; }
+  .lp-subs.bg-glow         { text-shadow: 0 1px 4px #000, 0 0 6px #000, 0 0 12px #000; }
+  .lp-subs.bg-outline span { background: transparent; }
+  .lp-subs.bg-outline      { text-shadow: -1.2px -1.2px 0 #000, 1.2px -1.2px 0 #000, -1.2px 1.2px 0 #000, 1.2px 1.2px 0 #000, 0 0 5px rgba(0,0,0,.55); }
+
   .demo-note { color: var(--muted); font-size: 14px; text-align: center; margin: 18px auto 0; max-width: 640px; }
 
   footer { border-top: 1px solid var(--line); padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align: center; }
@@ -170,6 +187,10 @@
       <div class="demo-meta" id="demoMeta"><span class="k">Lecture:</span> Linear Regression — Intro to ML<br><span class="k">Date:</span> 30 Jun 2026</div>
       <div class="demo-clock" id="demoClock">0:00 / 0:36</div>
       <div class="demo-subs" id="demoSubs"></div>
+    </div>
+    <div class="demo-lightpreview">
+      <div class="lp-cap">On this dark clip the box is barely visible — here's the same subtitle on a <b>light slide</b>, where it shows most. Cycle <b>BG</b> above to compare.</div>
+      <div class="lp-stage"><div class="lp-subs" id="lpSubs"><span>Then the fitted line predicts y for a new x.</span></div></div>
     </div>
     <p class="demo-note">Muted for autoplay — <b>unmute in the player</b> for the Gemini narration. The clip and its sibling <code>.vtt</code> + <code>.json</code> live in the repo's <a href="https://github.com/nipunbatra/video-subtitle-overlay/tree/main/demo">demo/</a> folder; <a href="app.html">open the app</a> and load them to try every control.</p>
   </div>
@@ -276,6 +297,7 @@ iwr https://raw.githubusercontent.com/nipunbatra/video-subtitle-overlay/main/app
   var meta  = document.getElementById('demoMeta');
   var subs  = document.getElementById('demoSubs');
   var clock = document.getElementById('demoClock');
+  var lp = document.getElementById('lpSubs');
   var cues = [
     [0.000,  6.051, "Suppose we measure some data — each dot pairs an input x with an output y."],
     [6.401, 11.252, "The points roughly follow a trend, so we model it with a straight line."],
@@ -314,9 +336,9 @@ iwr https://raw.githubusercontent.com/nipunbatra/video-subtitle-overlay/main/app
         case 'clock': clockOn = !clockOn; clock.classList.toggle('hidden', !clockOn); btn.classList.toggle('on', clockOn); break;
         case 'pos':   var top = subs.classList.toggle('top'); btn.textContent = 'Subs: ' + (top ? 'top' : 'bottom'); btn.classList.toggle('on', top); break;
         case 'bg':
-          DEMO_BG.forEach(function(s){ if (s[0]) subs.classList.remove(s[0]); });
+          DEMO_BG.forEach(function(s){ if (s[0]){ subs.classList.remove(s[0]); if (lp) lp.classList.remove(s[0]); } });
           demoBgIdx = (demoBgIdx + 1) % DEMO_BG.length;
-          if (DEMO_BG[demoBgIdx][0]) subs.classList.add(DEMO_BG[demoBgIdx][0]);
+          if (DEMO_BG[demoBgIdx][0]){ subs.classList.add(DEMO_BG[demoBgIdx][0]); if (lp) lp.classList.add(DEMO_BG[demoBgIdx][0]); }
           btn.textContent = 'BG: ' + DEMO_BG[demoBgIdx][1];
           btn.classList.toggle('on', demoBgIdx !== 0);
           break;
