@@ -8,6 +8,7 @@
   :root {
     --sub-size: 34px;
     --meta-size: 18px;
+    --ui-scale: 1;
     --bg: #0e0f13;
     --panel: #171a21;
     --line: #262b36;
@@ -123,7 +124,7 @@
     border: 1px solid rgba(255,255,255,0.12);
     border-radius: 10px;
     padding: 12px 16px;
-    font-size: var(--meta-size);
+    font-size: calc(var(--meta-size) * var(--ui-scale));
     line-height: 1.5;
     white-space: pre-wrap;
     pointer-events: none;
@@ -142,7 +143,7 @@
     border-radius: 8px;
     padding: 6px 12px;
     font-variant-numeric: tabular-nums;
-    font-size: 18px;
+    font-size: calc(18px * var(--ui-scale));
     font-weight: 600;
     letter-spacing: 0.5px;
     pointer-events: none;
@@ -158,7 +159,7 @@
     transform: translateX(-50%);
     max-width: 88%;
     text-align: center;
-    font-size: var(--sub-size);
+    font-size: calc(var(--sub-size) * var(--ui-scale));
     font-weight: 600;
     line-height: 1.3;
     color: #fff;
@@ -192,6 +193,14 @@
   .stage.bg-outline #meta, .stage.bg-outline #clock { text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 4px rgba(0,0,0,.6); }
   #subs.top { top: 8%; bottom: auto; }
   #subs:empty { display: none; }
+
+  /* Move mode: drag any overlay to reposition it (double-click to reset) */
+  .stage.moving #meta, .stage.moving #clock, .stage.moving #subs {
+    pointer-events: auto; cursor: move;
+    outline: 1px dashed rgba(120,170,255,0.85); outline-offset: 3px; border-radius: 6px;
+  }
+  .stage.moving #subs:empty { display: block; min-width: 90px; min-height: 22px; }
+  .stage.moving #subs:empty::after { content: "Subtitles"; opacity: 0.55; }
 
   .placeholder { color: var(--muted); text-align: center; padding: 40px; }
 
@@ -272,6 +281,9 @@
   <button id="subPlus" title="Bigger subtitles">Sub A+<kbd>+</kbd></button>
   <button id="metaMinus" title="Smaller metadata">Meta A−<kbd>[</kbd></button>
   <button id="metaPlus" title="Bigger metadata">Meta A+<kbd>]</kbd></button>
+  <button id="uiMinus" title="Scale everything down">All A−<kbd>,</kbd></button>
+  <button id="uiPlus" title="Scale everything up">All A+<kbd>.</kbd></button>
+  <button id="moveToggle" title="Drag overlays to reposition — double-click an overlay to reset"><span class="lbl">Move: off</span><kbd>v</kbd></button>
   <button id="presentBtn" title="Presentation mode">Present<kbd>p</kbd></button>
 </header>
 
@@ -296,6 +308,8 @@
       <div><kbd>g</kbd> overlay background style</div>
       <div><kbd>+</kbd> <kbd>−</kbd> subtitle size</div>
       <div><kbd>]</kbd> <kbd>[</kbd> metadata size</div>
+      <div><kbd>.</kbd> <kbd>,</kbd> scale everything</div>
+      <div><kbd>v</kbd> move / drag overlays</div>
       <div><kbd>p</kbd> presentation mode</div>
       <div><kbd>⇧</kbd><kbd>→</kbd> / <kbd>⇧</kbd><kbd>←</kbd> next / prev video</div>
       <div><kbd>←</kbd> <kbd>→</kbd> seek (video focused)</div>
@@ -590,6 +604,18 @@ function applySubBg(){
   setLbl('subBg', 'BG: ' + s.label);
 }
 
+/* ---------- overlay scale & drag positions ---------- */
+let uiScale = 1;
+let overlayPos = { meta: null, clock: null, subs: null };
+let movingOn = false;
+function applyScale(){ document.documentElement.style.setProperty('--ui-scale', uiScale); }
+function applyPos(el, key){
+  const p = overlayPos[key];
+  if (p){ el.style.left = p.l + '%'; el.style.top = p.t + '%'; el.style.right = 'auto'; el.style.bottom = 'auto'; el.style.transform = 'none'; }
+  else  { el.style.left = ''; el.style.top = ''; el.style.right = ''; el.style.bottom = ''; el.style.transform = ''; }
+}
+function applyAllPos(){ applyPos(metaEl, 'meta'); applyPos(clockEl, 'clock'); applyPos(subsEl, 'subs'); }
+
 /* ---------- persistent settings (localStorage) ---------- */
 const SETTINGS_KEY = 'vso-settings-v1';
 function cssPx(v){ return parseInt(getComputedStyle(document.documentElement).getPropertyValue(v)) || null; }
@@ -598,7 +624,7 @@ function saveSettings(){
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({
       showMeta, showSubs, showClock,
       subTop: subsEl.classList.contains('top'),
-      subBg: subBgIdx,
+      subBg: subBgIdx, uiScale, pos: overlayPos,
       subSize: cssPx('--sub-size'), metaSize: cssPx('--meta-size'),
     }));
   } catch(e){ /* storage unavailable — ignore */ }
@@ -614,11 +640,13 @@ function loadSettings(){
   if (s.metaSize) document.documentElement.style.setProperty('--meta-size', s.metaSize + 'px');
   if (s.subTop) subsEl.classList.add('top');
   if (typeof s.subBg === 'number' && SUB_BG[s.subBg]) subBgIdx = s.subBg;
+  if (typeof s.uiScale === 'number') uiScale = s.uiScale;
+  if (s.pos && typeof s.pos === 'object') overlayPos = { meta: s.pos.meta || null, clock: s.pos.clock || null, subs: s.pos.subs || null };
   setLbl('metaToggle', 'Metadata: ' + (showMeta ? 'on' : 'off'));
   setLbl('subToggle',  'Subs: ' + (showSubs ? 'on' : 'off'));
   setLbl('clockToggle','Time: ' + (showClock ? 'on' : 'off'));
   setLbl('subPos',     'Subs: ' + (subsEl.classList.contains('top') ? 'top' : 'bottom'));
-  applySubBg();
+  applySubBg(); applyScale(); applyAllPos();
 }
 loadSettings();
 
@@ -659,6 +687,7 @@ $('metaPlus').onclick  = () => setMetaSize(2);
 $('metaMinus').onclick = () => setMetaSize(-2);
 $('presentBtn').onclick = () => document.body.classList.toggle('present');
 $('subPos').onclick = () => {
+  overlayPos.subs = null; applyPos(subsEl, 'subs');
   const top = subsEl.classList.toggle('top');
   setLbl('subPos', 'Subs: ' + (top ? 'top' : 'bottom'));
   saveSettings();
@@ -668,6 +697,46 @@ $('subBg').onclick = () => {
   applySubBg();
   saveSettings();
 };
+$('uiPlus').onclick  = () => { uiScale = Math.min(2.5, Math.round((uiScale + 0.1) * 10) / 10); applyScale(); saveSettings(); };
+$('uiMinus').onclick = () => { uiScale = Math.max(0.5, Math.round((uiScale - 0.1) * 10) / 10); applyScale(); saveSettings(); };
+
+/* ---------- move / drag overlays ---------- */
+const stageDiv = document.querySelector('.stage');
+function setMoving(on){
+  movingOn = on;
+  stageDiv.classList.toggle('moving', on);
+  setLbl('moveToggle', 'Move: ' + (on ? 'on' : 'off'));
+}
+$('moveToggle').onclick = () => setMoving(!movingOn);
+[['meta', metaEl], ['clock', clockEl], ['subs', subsEl]].forEach(([key, el]) => {
+  el.addEventListener('pointerdown', e => {
+    if (!movingOn) return;
+    e.preventDefault();
+    const sr = stageDiv.getBoundingClientRect();
+    const er = el.getBoundingClientRect();
+    const offX = e.clientX - er.left, offY = e.clientY - er.top;
+    try { el.setPointerCapture(e.pointerId); } catch(_){}
+    const move = ev => {
+      let l = ev.clientX - sr.left - offX;
+      let t = ev.clientY - sr.top - offY;
+      l = Math.max(0, Math.min(l, sr.width  - er.width));
+      t = Math.max(0, Math.min(t, sr.height - er.height));
+      overlayPos[key] = { l: +(l / sr.width  * 100).toFixed(2), t: +(t / sr.height * 100).toFixed(2) };
+      applyPos(el, key);
+    };
+    const up = () => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      saveSettings();
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+  });
+  el.addEventListener('dblclick', () => {
+    if (!movingOn) return;
+    overlayPos[key] = null; applyPos(el, key); saveSettings();
+  });
+});
 function togglePlay(){
   if (activeIdx < 0) return;
   if (video.paused) video.play().catch(()=>{}); else video.pause();
@@ -686,6 +755,9 @@ document.addEventListener('keydown', e => {
   else if (e.key === 't') $('clockToggle').click();
   else if (e.key === 'b') $('subPos').click();
   else if (e.key === 'g') $('subBg').click();
+  else if (e.key === 'v') $('moveToggle').click();
+  else if (e.key === ',') $('uiMinus').click();
+  else if (e.key === '.') $('uiPlus').click();
   else if (e.key === 'p') $('presentBtn').click();
   else if (e.key === '+' || e.key === '=') setSubSize(4);
   else if (e.key === '-' || e.key === '_') setSubSize(-4);

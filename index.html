@@ -75,7 +75,7 @@
   .demo-frame .demo-meta {
     position: absolute; top: 14px; left: 14px; max-width: 62%;
     background: rgba(10,12,18,0.72); border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 10px; padding: 9px 13px; font-size: 13.5px; line-height: 1.5;
+    border-radius: 10px; padding: 9px 13px; font-size: calc(13.5px * var(--dscale, 1)); line-height: 1.5;
     text-align: left; text-shadow: 0 1px 3px #000; pointer-events: none;
   }
   .demo-frame .demo-meta .k { color: var(--accent); font-weight: 600; }
@@ -83,14 +83,19 @@
     position: absolute; top: 14px; right: 14px;
     background: rgba(10,12,18,0.72); border: 1px solid rgba(255,255,255,0.12);
     border-radius: 8px; padding: 5px 11px; font-variant-numeric: tabular-nums;
-    font-weight: 600; font-size: 13.5px; pointer-events: none; text-shadow: 0 1px 3px #000;
+    font-weight: 600; font-size: calc(13.5px * var(--dscale, 1)); pointer-events: none; text-shadow: 0 1px 3px #000;
   }
   .demo-frame .demo-subs {
     position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); max-width: 88%;
-    text-align: center; font-size: clamp(15px, 2.4vw, 22px); font-weight: 600; line-height: 1.3;
+    text-align: center; font-size: calc(clamp(15px, 2.4vw, 22px) * var(--dscale, 1)); font-weight: 600; line-height: 1.3;
     color: #fff; pointer-events: none; text-shadow: 0 2px 4px #000;
   }
   .demo-frame .demo-subs:empty { display: none; }
+  .demo-frame.moving .demo-meta, .demo-frame.moving .demo-clock, .demo-frame.moving .demo-subs {
+    pointer-events: auto; cursor: move; outline: 1px dashed rgba(120,170,255,0.85); outline-offset: 3px; border-radius: 6px;
+  }
+  .demo-frame.moving .demo-subs:empty { display: block; min-width: 80px; min-height: 20px; }
+  .demo-frame.moving .demo-subs:empty::after { content: "Subtitles"; opacity: 0.55; }
   .demo-frame .demo-subs span {
     background: rgba(0,0,0,0.55); padding: 2px 12px; border-radius: 6px;
     box-decoration-break: clone; -webkit-box-decoration-break: clone;
@@ -190,9 +195,10 @@
       <button class="tg on" data-act="subs">Subtitles</button>
       <button class="tg on" data-act="clock">Timecode</button>
       <button class="tg" data-act="pos">Subs: bottom</button>
-      <button class="tg" data-act="bg" title="Cycle subtitle background">BG: Solid</button>
-      <button class="tg" data-act="subminus" title="Smaller subtitles">A−</button>
-      <button class="tg" data-act="subplus" title="Bigger subtitles">A+</button>
+      <button class="tg" data-act="bg" title="Cycle overlay background (subtitles, metadata, timecode)">BG: Solid</button>
+      <button class="tg" data-act="move" title="Drag overlays to reposition (double-click to reset)">Move: off</button>
+      <button class="tg" data-act="subminus" title="Scale all overlays down">A−</button>
+      <button class="tg" data-act="subplus" title="Scale all overlays up">A+</button>
     </div>
     <div class="demo-frame">
       <video id="demoVid" controls playsinline autoplay muted loop preload="metadata" poster="demo/poster.jpg">
@@ -266,6 +272,8 @@
       <tr><td><kbd>g</kbd></td><td>Overlay background — subtitles, metadata &amp; timecode (box → light → faint → frosted → no-box)</td></tr>
       <tr><td><kbd>+</kbd> <kbd>−</kbd></td><td>Subtitle size</td></tr>
       <tr><td><kbd>]</kbd> <kbd>[</kbd></td><td>Metadata size</td></tr>
+      <tr><td><kbd>.</kbd> <kbd>,</kbd></td><td>Scale all overlays up / down</td></tr>
+      <tr><td><kbd>v</kbd></td><td>Move mode — drag overlays anywhere (double-click to reset)</td></tr>
       <tr><td><kbd>p</kbd></td><td>Presentation mode</td></tr>
       <tr><td><kbd>⇧</kbd>+<kbd>→</kbd> / <kbd>⇧</kbd>+<kbd>←</kbd></td><td>Next / previous video</td></tr>
     </table>
@@ -314,6 +322,23 @@ iwr https://raw.githubusercontent.com/nipunbatra/video-subtitle-overlay/main/app
   var clock = document.getElementById('demoClock');
   var lp = document.getElementById('lpSubs');
   var frame = document.querySelector('.demo-frame');
+  [meta, clock, subs].forEach(function(el){
+    el.addEventListener('pointerdown', function(e){
+      if (!demoMoving) return; e.preventDefault();
+      var sr = frame.getBoundingClientRect(), er = el.getBoundingClientRect();
+      var offX = e.clientX - er.left, offY = e.clientY - er.top;
+      try { el.setPointerCapture(e.pointerId); } catch(_){}
+      function move(ev){
+        var l = Math.max(0, Math.min(ev.clientX - sr.left - offX, sr.width - er.width));
+        var t = Math.max(0, Math.min(ev.clientY - sr.top - offY, sr.height - er.height));
+        el.style.left = (l / sr.width * 100) + '%'; el.style.top = (t / sr.height * 100) + '%';
+        el.style.right = 'auto'; el.style.bottom = 'auto'; el.style.transform = 'none';
+      }
+      function up(){ el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); }
+      el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
+    });
+    el.addEventListener('dblclick', function(){ if (!demoMoving) return; el.style.left=''; el.style.top=''; el.style.right=''; el.style.bottom=''; el.style.transform=''; });
+  });
   var cues = [
     [0.000,  6.051, "Suppose we measure some data — each dot pairs an input x with an output y."],
     [6.401, 11.252, "The points roughly follow a trend, so we model it with a straight line."],
@@ -323,7 +348,7 @@ iwr https://raw.githubusercontent.com/nipunbatra/video-subtitle-overlay/main/app
     [31.245,36.576, "Then the fitted line predicts y for a new x — that's linear regression."]
   ];
   var metaOn = true, subsOn = true, clockOn = true, subPx = 0;  // subPx 0 = CSS-controlled
-  var demoBgIdx = 0;
+  var demoBgIdx = 0, dscale = 1, demoMoving = false;
   var DEMO_BG = [['','Solid'],['bg-light','Light'],['bg-faint','Faint'],['bg-blur','Frosted'],['bg-glow','No box · glow'],['bg-outline','No box · outline']];
 
   function fmt(t){ t = Math.max(0, Math.floor(t||0)); return Math.floor(t/60)+':'+String(t%60).padStart(2,'0'); }
@@ -369,8 +394,9 @@ iwr https://raw.githubusercontent.com/nipunbatra/video-subtitle-overlay/main/app
           btn.textContent = 'BG: ' + DEMO_BG[demoBgIdx][1];
           btn.classList.toggle('on', demoBgIdx !== 0);
           break;
-        case 'subplus':  subPx = (subPx || 20) + 3; subs.style.fontSize = subPx + 'px'; break;
-        case 'subminus': subPx = Math.max(12, (subPx || 20) - 3); subs.style.fontSize = subPx + 'px'; break;
+        case 'subplus':  dscale = Math.min(2.2, Math.round((dscale + 0.1) * 10) / 10); frame.style.setProperty('--dscale', dscale); break;
+        case 'subminus': dscale = Math.max(0.6, Math.round((dscale - 0.1) * 10) / 10); frame.style.setProperty('--dscale', dscale); break;
+        case 'move':     demoMoving = !demoMoving; frame.classList.toggle('moving', demoMoving); btn.textContent = 'Move: ' + (demoMoving ? 'on' : 'off'); btn.classList.toggle('on', demoMoving); break;
       }
     });
   });

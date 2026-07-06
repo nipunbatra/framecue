@@ -74,6 +74,8 @@ Then:
 | `g` | Overlay background — subtitles, metadata & timecode (box → lighter → faint → frosted → no-box) |
 | `+` / `−` | Subtitle size |
 | `]` / `[` | Metadata size |
+| `.` / `,` | Scale all overlays up / down |
+| `v` | Move mode — drag any overlay anywhere (double-click to reset) |
 | `p` | Presentation mode |
 | `⇧→` / `⇧←` | Next / previous video |
 
