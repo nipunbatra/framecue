@@ -273,7 +273,7 @@
     <input type="file" id="dirInput" webkitdirectory directory multiple>
   </label>
   <label class="btn">Pick files
-    <input type="file" id="fileInput" multiple accept="video/*,.vtt,.json,.txt">
+    <input type="file" id="fileInput" multiple accept="video/*,.vtt,.srt,.json,.txt">
   </label>
   <button id="ytAdd" title="Play a YouTube video by link (needs internet)">▶ YouTube link</button>
   <button id="metaBuild" title="Build a metadata .json file">✎ New metadata</button>
@@ -298,7 +298,7 @@
     Click <b>Pick folder</b> and choose a folder containing your videos.<br><br>
     For each video, files with the <b>same base name</b> are auto-loaded:<br>
     • <code>talk.mp4</code> — the video<br>
-    • <code>talk.vtt</code> — subtitles<br>
+    • <code>talk.vtt</code> / <code>talk.srt</code> — subtitles<br>
     • <code>talk.json</code> or <code>talk.txt</code> — metadata overlay<br><br>
     No metadata file yet? Click <b>✎ New metadata</b> to build one and download the <code>.json</code>.<br><br>
     <b>▶ YouTube link</b> plays a YouTube video with the same overlays (works on the hosted app or any http-served copy — YouTube blocks players on <code>file://</code> pages; everything else stays local). Its "base name" is the <b>video ID</b> — add metadata via <b>✎ New metadata → Apply to current</b>, or add a <code>&lt;video-id&gt;.vtt</code> / <code>.json</code> and it attaches automatically.<br><br>
@@ -382,7 +382,7 @@ let showMeta = true, showSubs = true, showClock = true;
 let mbOpen = false;
 
 function fmtTime(s){
-  if (!isFinite(s)) s = 0;
+  if (!isFinite(s) || s < 0) s = 0;
   s = Math.floor(s);
   const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
   const mm = h ? String(m).padStart(2,'0') : String(m);
@@ -412,7 +412,7 @@ function indexFiles(fileList){
   const videos = [], orphans = [];
   for (const g of groups.values()){
     const vext = videoExts.find(e => g.exts[e]);
-    const vtt = g.exts['vtt'] || null;
+    const vtt = g.exts['vtt'] || g.exts['srt'] || null;
     const meta = g.exts['json'] || g.exts['txt'] || null;
     const metaType = g.exts['json'] ? 'json' : (g.exts['txt'] ? 'txt' : null);
     if (!vext){
@@ -454,6 +454,10 @@ function addFiles(fileList){
   renderList();
   if (activeIdx < 0 && items.length) load(0);
   else if (activeTouched) loadSides(items[activeIdx]);
+  if (!items.length && fileList.length){
+    alert('No playable videos found — pick MP4/WebM files (or a folder containing them). ' +
+      'Subtitle (.vtt/.srt) and metadata (.json/.txt) files attach to a video with the same base name.');
+  }
 }
 
 function renderList(){
@@ -505,7 +509,9 @@ function parseVTT(text){
     if (!m) continue;
     const idx = lines.indexOf(timing);
     const txt = lines.slice(idx+1).join('\n').replace(/<[^>]+>/g,'');
-    res.push({ start: toSeconds(m[1]), end: toSeconds(m[2]), text: txt });
+    const start = toSeconds(m[1]), end = toSeconds(m[2]);
+    if (!isFinite(start) || !isFinite(end)) continue;
+    res.push({ start, end, text: txt });
   }
   res.sort((a,b)=>a.start-b.start);
   return res;
@@ -523,24 +529,27 @@ function renderSubs(txt){
   });
 }
 function tick(){
-  if (showClock && activeIdx >= 0){
-    const tc = fmtTime(curTime()) + '|' + fmtTime(curDur());
-    if (tc !== lastClock){
-      clockEl.innerHTML = fmtTime(curTime()) +
-        ' <span class="dur">/ ' + fmtTime(curDur()) + '</span>';
-      lastClock = tc;
+  try {
+    if (showClock && activeIdx >= 0){
+      const tc = fmtTime(curTime()) + '|' + fmtTime(curDur());
+      if (tc !== lastClock){
+        clockEl.innerHTML = fmtTime(curTime()) +
+          ' <span class="dur">/ ' + fmtTime(curDur()) + '</span>';
+        lastClock = tc;
+      }
     }
-  }
-  if (showSubs && cues.length){
-    const t = curTime();
-    const cue = cues.find(c => t >= c.start && t <= c.end);
-    const txt = cue ? cue.text : '';
-    if (txt !== lastCueText){
-      renderSubs(txt);
-      lastCueText = txt;
+    if (showSubs && cues.length){
+      const t = curTime();
+      const cue = cues.find(c => t >= c.start && t <= c.end);
+      const txt = cue ? cue.text : '';
+      if (txt !== lastCueText){
+        renderSubs(txt);
+        lastCueText = txt;
+      }
     }
+  } finally {
+    requestAnimationFrame(tick);   // one bad frame must not kill the overlay loop
   }
-  requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
 
@@ -549,16 +558,19 @@ function renderMeta(text, type){
   if (!showMeta || !text){ metaEl.replaceChildren(); return; }
   if (type === 'json'){
     try {
-      const obj = JSON.parse(text);
-      metaEl.replaceChildren();
-      for (const [k,v] of Object.entries(obj)){
-        const div = document.createElement('div');
-        const sp = document.createElement('span'); sp.className = 'k'; sp.textContent = k + ':';
-        div.appendChild(sp);
-        div.appendChild(document.createTextNode(' ' + (typeof v === 'object' ? JSON.stringify(v) : v)));
-        metaEl.appendChild(div);
+      const obj = JSON.parse(text.replace(/^\uFEFF/, ''));   // tolerate a UTF-8 BOM
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)){
+        metaEl.replaceChildren();
+        for (const [k,v] of Object.entries(obj)){
+          const div = document.createElement('div');
+          const sp = document.createElement('span'); sp.className = 'k'; sp.textContent = k + ':';
+          div.appendChild(sp);
+          div.appendChild(document.createTextNode(' ' + (typeof v === 'object' ? JSON.stringify(v) : v)));
+          metaEl.appendChild(div);
+        }
+        return;
       }
-      return;
+      // valid JSON but not a key/value object (string, number, array…) — show as-is
     } catch(e){ /* fall through to raw */ }
   }
   metaEl.textContent = text;
@@ -570,17 +582,25 @@ function updateClockVisibility(){
   clockEl.classList.toggle('hide', !(showClock && activeIdx >= 0));
 }
 async function loadSides(it){
+  const key = it.dir + '||' + it.name;
   cues = [];
   lastCueText = null;
   subsEl.innerHTML = '';
+  let newCues = [];
   if (it.vtt){
-    try { cues = parseVTT(await it.vtt.text()); } catch(e){ console.warn('VTT parse failed', e); }
+    try { newCues = parseVTT(await it.vtt.text()); } catch(e){ console.warn('subtitle parse failed', e); }
   }
+  if (key !== curKey) return;   // user switched items while the file was being read
+  cues = newCues;
 
   curMetaText = null; curMetaType = null;
   if (it.meta){
-    curMetaText = await it.meta.text();
-    curMetaType = it.metaType;
+    try {
+      const text = await it.meta.text();
+      if (key !== curKey) return;
+      curMetaText = text;
+      curMetaType = it.metaType;
+    } catch(e){ console.warn('metadata read failed', e); }
   }
   renderMeta(curMetaText, curMetaType);
 }
@@ -620,10 +640,15 @@ const ytwrap = $('ytwrap');
 let ytPlayer = null, ytReady = false, ytApiPromise = null, ytPendingId = null;
 
 function parseYouTubeId(text){
-  text = (text || '').trim();
+  // tolerate URLs pasted with wrapping quotes/brackets or trailing punctuation
+  text = (text || '').trim().replace(/^[<('"\s]+|[>)'".,;\s]+$/g, '');
   if (/^[A-Za-z0-9_-]{11}$/.test(text)) return text;   // bare video ID
   let u;
-  try { u = new URL(text); } catch(e){ return null; }
+  try { u = new URL(text); }
+  catch(e){
+    try { u = new URL('https://' + text); }   // pasted without a scheme, e.g. "youtube.com/watch?v=…"
+    catch(e2){ return null; }
+  }
   const host = u.hostname.replace(/^(www\.|m\.|music\.)/,'');
   let id = null;
   if (host === 'youtu.be') id = u.pathname.slice(1).split('/')[0];
@@ -640,10 +665,12 @@ function parseYouTubeId(text){
 function loadYtApi(){
   if (ytApiPromise) return ytApiPromise;
   ytApiPromise = new Promise((resolve, reject) => {
-    window.onYouTubeIframeAPIReady = resolve;
+    const fail = why => { ytApiPromise = null; reject(new Error(why)); };   // reset so a retry can work
+    const timer = setTimeout(() => fail('yt api timeout'), 15000);
+    window.onYouTubeIframeAPIReady = () => { clearTimeout(timer); resolve(); };
     const s = document.createElement('script');
     s.src = 'https://www.youtube.com/iframe_api';
-    s.onerror = () => { ytApiPromise = null; reject(new Error('yt api load failed')); };
+    s.onerror = () => { clearTimeout(timer); fail('yt api load failed'); };
     document.head.appendChild(s);
   });
   return ytApiPromise;
@@ -661,6 +688,7 @@ const YT_ERRORS = {
   153: YT_MSG_FILE,
 };
 function ytError(msg){
+  if (!isYt()) return;   // stale error after the user already switched to another item
   ytwrap.classList.add('hidden');
   placeholder.textContent = msg;
   placeholder.classList.remove('hidden');
@@ -673,17 +701,29 @@ async function playYouTube(id){
   const cur = items[activeIdx];
   if (!cur || cur.ytId !== id) return;   // user switched away while the API loaded
   if (!ytPlayer){
-    ytPlayer = new YT.Player('ytplayer', {
-      videoId: id,
-      playerVars: { autoplay: 1, playsinline: 1, rel: 0 },
-      events: {
-        onReady: () => {
-          ytReady = true;
-          if (ytPendingId){ ytPlayer.loadVideoById(ytPendingId); ytPendingId = null; }
+    try {
+      ytPlayer = new YT.Player('ytplayer', {
+        videoId: id,
+        playerVars: { autoplay: 1, playsinline: 1, rel: 0 },
+        events: {
+          onReady: () => {
+            ytReady = true;
+            if (ytPendingId){ const p = ytPendingId; ytPendingId = null; ytPlayer.loadVideoById(p); }
+          },
+          onStateChange: e => {
+            // never let a hidden player keep playing (e.g. the user switched to a
+            // local video while the embed was still initialising)
+            if (e.data === YT.PlayerState.PLAYING && !isYt()){
+              try { ytPlayer.stopVideo(); } catch(_){}
+            }
+          },
+          onError: e => { ytError(YT_ERRORS[e.data] || ('YouTube playback error (code ' + e.data + ').')); },
         },
-        onError: e => { ytError(YT_ERRORS[e.data] || 'YouTube playback error.'); },
-      },
-    });
+      });
+    } catch(e){
+      ytPlayer = null;
+      ytError('Could not start the YouTube player.');
+    }
   } else if (ytReady){
     ytPlayer.loadVideoById(id);
   } else {
@@ -697,7 +737,8 @@ function stopYouTube(){
 function addYouTube(id){
   let idx = items.findIndex(it => it.type === 'yt' && it.ytId === id);
   if (idx < 0){
-    items.push({ name: id, dir: '', type: 'yt', ytId: id, video: null, vtt: null, meta: null, metaType: null });
+    // dir 'youtube' keeps the key unique even if a local root file shares the ID as its name
+    items.push({ name: id, dir: 'youtube', type: 'yt', ytId: id, video: null, vtt: null, meta: null, metaType: null });
     items.sort((a,b)=> (a.dir+a.name).localeCompare(b.dir+b.name));
     idx = items.findIndex(it => it.type === 'yt' && it.ytId === id);
   }
@@ -705,8 +746,8 @@ function addYouTube(id){
 }
 
 const isYt = () => activeIdx >= 0 && items[activeIdx].type === 'yt';
-function curTime(){ return isYt() ? (ytReady ? ytPlayer.getCurrentTime() : 0) : video.currentTime; }
-function curDur(){ return isYt() ? (ytReady ? ytPlayer.getDuration() : 0) : video.duration; }
+function curTime(){ try { return isYt() ? (ytReady ? ytPlayer.getCurrentTime() : 0) : video.currentTime; } catch(e){ return 0; } }
+function curDur(){ try { return isYt() ? (ytReady ? ytPlayer.getDuration() : 0) : video.duration; } catch(e){ return 0; } }
 
 /* ---------- controls ---------- */
 $('dirInput').onchange = e => addFiles(e.target.files);
@@ -768,15 +809,24 @@ function loadSettings(){
   let s = null;
   try { s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); } catch(e){}
   if (!s) return;
+  // validate everything — a corrupted or hand-edited localStorage entry must not break the UI
+  const num = (v, lo, hi) => (typeof v === 'number' && isFinite(v)) ? Math.min(hi, Math.max(lo, v)) : null;
   if (typeof s.showMeta  === 'boolean') showMeta  = s.showMeta;
   if (typeof s.showSubs  === 'boolean') showSubs  = s.showSubs;
   if (typeof s.showClock === 'boolean') showClock = s.showClock;
-  if (s.subSize)  document.documentElement.style.setProperty('--sub-size', s.subSize + 'px');
-  if (s.metaSize) document.documentElement.style.setProperty('--meta-size', s.metaSize + 'px');
+  const ss = num(s.subSize, 14, 120), ms = num(s.metaSize, 12, 80);
+  if (ss) document.documentElement.style.setProperty('--sub-size', ss + 'px');
+  if (ms) document.documentElement.style.setProperty('--meta-size', ms + 'px');
   if (s.subTop) subsEl.classList.add('top');
   if (typeof s.subBg === 'number' && SUB_BG[s.subBg]) subBgIdx = s.subBg;
-  if (typeof s.uiScale === 'number') uiScale = s.uiScale;
-  if (s.pos && typeof s.pos === 'object') overlayPos = { meta: s.pos.meta || null, clock: s.pos.clock || null, subs: s.pos.subs || null };
+  const us = num(s.uiScale, 0.5, 2.5);
+  if (us) uiScale = us;
+  const pos = k => {
+    const p = s.pos && s.pos[k];
+    const l = num(p && p.l, 0, 100), t = num(p && p.t, 0, 100);
+    return (l !== null && t !== null) ? { l, t } : null;
+  };
+  overlayPos = { meta: pos('meta'), clock: pos('clock'), subs: pos('subs') };
   setLbl('metaToggle', 'Metadata: ' + (showMeta ? 'on' : 'off'));
   setLbl('subToggle',  'Subs: ' + (showSubs ? 'on' : 'off'));
   setLbl('clockToggle','Time: ' + (showClock ? 'on' : 'off'));
@@ -809,13 +859,13 @@ video.addEventListener('error', () => {
   placeholder.textContent = 'Cannot play this file in Chrome (unsupported codec/format). Use MP4/H.264 or WebM.';
   placeholder.classList.remove('hidden');
 });
-function setSize(varName, d, min){
-  const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue(varName));
-  document.documentElement.style.setProperty(varName, Math.max(min, cur + d) + 'px');
+function setSize(varName, d, min, max){
+  const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue(varName)) || min;
+  document.documentElement.style.setProperty(varName, Math.min(max, Math.max(min, cur + d)) + 'px');
   saveSettings();
 }
-const setSubSize  = d => setSize('--sub-size', d, 14);
-const setMetaSize = d => setSize('--meta-size', d, 12);
+const setSubSize  = d => setSize('--sub-size', d, 14, 120);
+const setMetaSize = d => setSize('--meta-size', d, 12, 80);
 $('subPlus').onclick  = () => setSubSize(4);
 $('subMinus').onclick = () => setSubSize(-4);
 $('metaPlus').onclick  = () => setMetaSize(2);
@@ -876,8 +926,10 @@ function togglePlay(){
   if (activeIdx < 0) return;
   if (isYt()){
     if (!ytReady) return;
-    if (ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
-    else ytPlayer.playVideo();
+    try {
+      if (ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
+      else ytPlayer.playVideo();
+    } catch(e){ /* player in a broken state — ignore */ }
     return;
   }
   if (video.paused) video.play().catch(()=>{}); else video.pause();
@@ -939,7 +991,10 @@ document.addEventListener('drop', async e => {
     }
   }
   if (e.dataTransfer.files.length){ addFiles(e.dataTransfer.files); return; }
-  const id = parseYouTubeId(e.dataTransfer.getData('text'));   // a YouTube URL dragged onto the page
+  // a YouTube URL dragged onto the page (uri-list can be multi-line with # comments)
+  const raw = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text');
+  const link = (raw || '').split('\n').find(l => l.trim() && !l.startsWith('#'));
+  const id = parseYouTubeId(link);
   if (id) addYouTube(id);
 });
 
@@ -1035,7 +1090,7 @@ $('mbLoadInput').onchange = async e => {
   e.target.value = '';
   if (!f) return;
   let o;
-  try { o = JSON.parse(await f.text()); }
+  try { o = JSON.parse((await f.text()).replace(/^\uFEFF/, '')); }
   catch(err){ alert('That file is not valid JSON.'); return; }
   if (!o || typeof o !== 'object' || Array.isArray(o)){ alert('Expected a JSON object of key/value fields.'); return; }
   mbFill(o);

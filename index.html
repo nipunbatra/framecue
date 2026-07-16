@@ -222,7 +222,7 @@
     <h2>What it does</h2>
     <p class="sub">Everything renders inside the browser tab — nothing extra to install.</p>
     <div class="grid">
-      <div class="card"><h3>Auto-matched files</h3><p>Pick a folder; each video finds its same-named <code>.vtt</code> subtitles and <code>.json</code>/<code>.txt</code> metadata automatically.</p></div>
+      <div class="card"><h3>Auto-matched files</h3><p>Pick a folder; each video finds its same-named <code>.vtt</code>/<code>.srt</code> subtitles and <code>.json</code>/<code>.txt</code> metadata automatically.</p></div>
       <div class="card"><h3>YouTube links too</h3><p>Paste a YouTube link (or drag one onto the page) — it plays in an embedded player with the same overlays drawn on top.</p></div>
       <div class="card"><h3>Constant metadata</h3><p>A persistent overlay (title, date, anything) stays on screen for the whole clip — perfect for context during a lecture or talk.</p></div>
       <div class="card"><h3>Synced subtitles</h3><p>Custom WebVTT renderer styled for readability on a shared screen. Resize and reposition on the fly.</p></div>
@@ -239,7 +239,7 @@
     <p class="sub">Name the files with the same base name and drop them in a folder:</p>
 <pre>my-folder/
 ├── talk.mp4      ← the video
-├── talk.vtt      ← subtitles  (optional)
+├── talk.vtt      ← subtitles  (optional, or talk.srt)
 └── talk.json     ← metadata overlay  (optional, or talk.txt)</pre>
     <p>Metadata as JSON renders as <code>key: value</code> lines:</p>
 <pre>{

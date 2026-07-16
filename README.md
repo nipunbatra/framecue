@@ -22,10 +22,10 @@ https://github.com/nipunbatra/video-subtitle-overlay/raw/main/demo/demo-lecture.
 
 ## Features
 
-- **Auto-matched files** — pick a folder; each video finds its same-named `.vtt` subtitles and `.json`/`.txt` metadata.
+- **Auto-matched files** — pick a folder; each video finds its same-named `.vtt`/`.srt` subtitles and `.json`/`.txt` metadata.
 - **YouTube links too** — paste a link (or drag one onto the page); the video plays in an embedded player with the same overlays drawn on top.
 - **Constant metadata overlay** — title, date, or any fields stay on screen for the whole clip.
-- **Synced subtitles** — custom WebVTT renderer, resizable and repositionable for a shared screen.
+- **Synced subtitles** — custom WebVTT/SRT renderer, resizable and repositionable for a shared screen.
 - **Live timecode** — always-visible `current / duration` readout.
 - **Presentation mode** — one key hides the UI so the video fills the tab.
 - **100% local & private** — no uploads, no server, no dependencies. *(YouTube items naturally stream from YouTube — everything else stays on your machine.)*
@@ -37,7 +37,7 @@ Name files with the **same base name** and put them in a folder:
 ```
 my-folder/
 ├── talk.mp4      ← the video
-├── talk.vtt      ← subtitles  (optional)
+├── talk.vtt      ← subtitles  (optional, or talk.srt)
 └── talk.json     ← metadata overlay  (optional, or talk.txt)
 ```
 
@@ -121,7 +121,12 @@ There's nothing to install and **nothing is ever uploaded** — your videos stay
 
 Then point the app at a folder of videos (see [Usage](#usage)). It all runs inside the browser tab: no server, no sign-up, no upload.
 
-*Developers:* you can still `git clone` the repo if you want the source and demo files.
+*Developers:* you can still `git clone` the repo if you want the source, demo files and tests. The test suite (pytest + Playwright driving your installed Chrome, YouTube API mocked) runs with:
+
+```bash
+uv run --with pytest --with playwright pytest tests/ -q          # full suite
+uv run --with pytest --with playwright pytest tests/ -q --live   # + real YouTube embed
+```
 
 ## Roadmap
 
