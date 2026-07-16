@@ -23,11 +23,12 @@ https://github.com/nipunbatra/video-subtitle-overlay/raw/main/demo/demo-lecture.
 ## Features
 
 - **Auto-matched files** — pick a folder; each video finds its same-named `.vtt` subtitles and `.json`/`.txt` metadata.
+- **YouTube links too** — paste a link (or drag one onto the page); the video plays in an embedded player with the same overlays drawn on top.
 - **Constant metadata overlay** — title, date, or any fields stay on screen for the whole clip.
 - **Synced subtitles** — custom WebVTT renderer, resizable and repositionable for a shared screen.
 - **Live timecode** — always-visible `current / duration` readout.
 - **Presentation mode** — one key hides the UI so the video fills the tab.
-- **100% local & private** — no uploads, no server, no dependencies.
+- **100% local & private** — no uploads, no server, no dependencies. *(YouTube items naturally stream from YouTube — everything else stays on your machine.)*
 
 ## Usage
 
@@ -53,6 +54,21 @@ my-folder/
 A plain `talk.txt` is shown verbatim.
 
 > **Don't want to hand-write JSON?** Click **✎ New metadata** in the app — add fields with a live preview, then download a ready-to-use `.json` (named to match your video) or apply it to the current clip instantly.
+
+### YouTube links
+
+Click **▶ YouTube link** and paste a URL — or just drag one from the address bar onto the page. The video plays in an embedded YouTube player with the same subtitle/metadata/timecode overlays drawn on top, so they still show up in a shared tab.
+
+A YouTube item's *base name* is its **video ID**, so the usual same-name matching applies:
+
+- **Metadata** — easiest: **✎ New metadata → Apply to current** (and **Download .json** to keep it for next time). Or add a `<video-id>.json` (e.g. `dQw4w9WgXcQ.json`) via **Pick files** / drag & drop.
+- **Subtitles** — add a `<video-id>.vtt` the same way. (YouTube's own captions aren't accessible from an embed, so bring your own `.vtt`.)
+
+Notes:
+
+- Works on the **[hosted app](https://nipunbatra.github.io/video-subtitle-overlay/app.html)** or any http-served copy. YouTube refuses to play inside a page opened as a **local file** (`file://` sends no referrer → YouTube error 153) — if you downloaded `app.html`, serve it first: `python3 -m http.server`, then open `http://localhost:8000/app.html`. Local videos are unaffected either way.
+- Videos whose owner disabled embedding won't play (YouTube error 150/101).
+- Keyboard shortcuts work while the embedded player isn't focused.
 
 Then:
 

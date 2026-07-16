@@ -223,11 +223,12 @@
     <p class="sub">Everything renders inside the browser tab — nothing extra to install.</p>
     <div class="grid">
       <div class="card"><h3>Auto-matched files</h3><p>Pick a folder; each video finds its same-named <code>.vtt</code> subtitles and <code>.json</code>/<code>.txt</code> metadata automatically.</p></div>
+      <div class="card"><h3>YouTube links too</h3><p>Paste a YouTube link (or drag one onto the page) — it plays in an embedded player with the same overlays drawn on top.</p></div>
       <div class="card"><h3>Constant metadata</h3><p>A persistent overlay (title, date, anything) stays on screen for the whole clip — perfect for context during a lecture or talk.</p></div>
       <div class="card"><h3>Synced subtitles</h3><p>Custom WebVTT renderer styled for readability on a shared screen. Resize and reposition on the fly.</p></div>
       <div class="card"><h3>Live timecode</h3><p>An always-visible <code>current / duration</code> readout for the audience.</p></div>
       <div class="card"><h3>Presentation mode</h3><p>One key hides all the chrome so the video fills the tab — clean to share.</p></div>
-      <div class="card"><h3>100% local & private</h3><p>No uploads, no server, no dependencies. Your files never leave your machine.</p></div>
+      <div class="card"><h3>100% local & private</h3><p>No uploads, no server, no dependencies. Your files never leave your machine — only YouTube items stream from YouTube.</p></div>
     </div>
   </div>
 </section>
@@ -255,6 +256,7 @@
       <li>Share the <b>Chrome Tab</b> in Meet/Zoom and tick <b>“Also share tab audio.”</b></li>
     </ol>
     <div class="note">Playback uses the browser's codecs — <b>MP4 (H.264)</b> and <b>WebM</b> are the safe bets. <code>.mkv</code>/<code>.avi</code> may not decode in Chrome.</div>
+    <div class="note"><b>YouTube:</b> click <b>▶ YouTube link</b> in the app (or drag a URL onto the page). A YouTube item's base name is its <b>video ID</b>, so the same-name rule still works — add metadata via <b>✎ New metadata → Apply to current</b>, or add sidecar files named after the ID (<code>dQw4w9WgXcQ.vtt</code> / <code>.json</code>). Works on the <a href="app.html">hosted app</a> or any http-served copy — YouTube refuses to play inside a page opened as a local <code>file://</code>, so a downloaded <code>app.html</code> needs a tiny server (<code>python3 -m http.server</code>) for this one feature.</div>
   </div>
 </section>
 

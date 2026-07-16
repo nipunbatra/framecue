@@ -101,6 +101,7 @@
   .tag { font-size: 10.5px; padding: 1px 6px; border-radius: 999px; background: #2b3140; color: var(--muted); }
   .tag.on { background: #1d3a2a; color: #6ee7a8; }
   .tag.meta.on { background: #3a2f1d; color: #f0c674; }
+  .tag.yt.on { background: #3a1d1d; color: #ff9b9b; }
 
   main {
     grid-area: main;
@@ -113,6 +114,10 @@
   }
   .stage { position: relative; width: 100%; height: 100%; }
   video { width: 100%; height: 100%; background: #000; display: block; }
+  /* YouTube items play in an embedded player instead of <video>; the overlays are
+     siblings drawn on top, so they still show up in a shared tab */
+  #ytwrap { position: absolute; inset: 0; background: #000; }
+  #ytwrap iframe { width: 100%; height: 100%; display: block; }
 
   /* Metadata overlay (constant) */
   #meta {
@@ -270,6 +275,7 @@
   <label class="btn">Pick files
     <input type="file" id="fileInput" multiple accept="video/*,.vtt,.json,.txt">
   </label>
+  <button id="ytAdd" title="Play a YouTube video by link (needs internet)">▶ YouTube link</button>
   <button id="metaBuild" title="Build a metadata .json file">✎ New metadata</button>
   <div class="spacer"></div>
   <button id="metaToggle" title="Toggle metadata"><span class="lbl">Metadata: on</span><kbd>m</kbd></button>
@@ -295,7 +301,8 @@
     • <code>talk.vtt</code> — subtitles<br>
     • <code>talk.json</code> or <code>talk.txt</code> — metadata overlay<br><br>
     No metadata file yet? Click <b>✎ New metadata</b> to build one and download the <code>.json</code>.<br><br>
-    You can also drag &amp; drop files (or a whole folder) anywhere on the page.<br><br>
+    <b>▶ YouTube link</b> plays a YouTube video with the same overlays (works on the hosted app or any http-served copy — YouTube blocks players on <code>file://</code> pages; everything else stays local). Its "base name" is the <b>video ID</b> — add metadata via <b>✎ New metadata → Apply to current</b>, or add a <code>&lt;video-id&gt;.vtt</code> / <code>.json</code> and it attaches automatically.<br><br>
+    You can also drag &amp; drop files (or a whole folder) anywhere on the page — or drag a YouTube URL straight from the address bar.<br><br>
     Share via Chrome tab (with "Share tab audio") — subtitles and metadata are drawn in the tab, so they show in the shared view.
 
     <div class="keys">
@@ -323,6 +330,7 @@
 <main id="stage">
   <div class="stage">
     <video id="video" controls playsinline></video>
+    <div id="ytwrap" class="hidden"><div id="ytplayer"></div></div>
     <div id="meta"></div>
     <div id="clock" class="hide">0:00</div>
     <div id="subs"></div>
@@ -401,28 +409,27 @@ function indexFiles(fileList){
     if (!groups.has(key)) groups.set(key, {dir, base, exts:{}});
     groups.get(key).exts[ext] = f;
   }
-  const out = [];
+  const videos = [], orphans = [];
   for (const g of groups.values()){
     const vext = videoExts.find(e => g.exts[e]);
-    if (!vext) continue;
-    out.push({
-      name: g.base,
-      dir: g.dir,
-      video: g.exts[vext],
-      vtt: g.exts['vtt'] || null,
-      meta: g.exts['json'] || g.exts['txt'] || null,
-      metaType: g.exts['json'] ? 'json' : (g.exts['txt'] ? 'txt' : null),
-    });
+    const vtt = g.exts['vtt'] || null;
+    const meta = g.exts['json'] || g.exts['txt'] || null;
+    const metaType = g.exts['json'] ? 'json' : (g.exts['txt'] ? 'txt' : null);
+    if (!vext){
+      if (vtt || meta) orphans.push({ dir: g.dir, base: g.base, vtt, meta, metaType });
+      continue;
+    }
+    videos.push({ name: g.base, dir: g.dir, video: g.exts[vext], vtt, meta, metaType });
   }
-  out.sort((a,b)=> (a.dir+a.name).localeCompare(b.dir+b.name));
-  return out;
+  videos.sort((a,b)=> (a.dir+a.name).localeCompare(b.dir+b.name));
+  return { videos, orphans };
 }
 
 function addFiles(fileList){
-  const merged = indexFiles(fileList);
+  const { videos, orphans } = indexFiles(fileList);
   // merge with existing by dir+name (so dropping more files augments)
   const map = new Map(items.map(i => [i.dir+'||'+i.name, i]));
-  for (const it of merged){
+  for (const it of videos){
     const k = it.dir+'||'+it.name;
     if (map.has(k)){
       const e = map.get(k);
@@ -431,11 +438,22 @@ function addFiles(fileList){
       if (it.meta){ e.meta = it.meta; e.metaType = it.metaType; }
     } else { map.set(k, it); }
   }
+  // sidecars with no same-named video attach to an existing item by base name —
+  // adds subs/meta to an already-loaded video or a YouTube item (whose name is the video ID)
+  let activeTouched = false;
+  for (const o of orphans){
+    const t = map.get(o.dir+'||'+o.base) || [...map.values()].find(it => it.name === o.base);
+    if (!t) continue;
+    if (o.vtt) t.vtt = o.vtt;
+    if (o.meta){ t.meta = o.meta; t.metaType = o.metaType; }
+    if (t.dir+'||'+t.name === curKey) activeTouched = true;
+  }
   items = [...map.values()].sort((a,b)=> (a.dir+a.name).localeCompare(b.dir+b.name));
   // keep the currently-playing item selected even though the list re-sorted
   activeIdx = curKey ? items.findIndex(it => (it.dir+'||'+it.name) === curKey) : -1;
   renderList();
   if (activeIdx < 0 && items.length) load(0);
+  else if (activeTouched) loadSides(items[activeIdx]);
 }
 
 function renderList(){
@@ -458,6 +476,7 @@ function renderList(){
     const tags = document.createElement('div');
     tags.className = 'tags';
     tags.innerHTML =
+      (it.type === 'yt' ? `<span class="tag yt on">▶ youtube</span>` : '') +
       `<span class="tag sub ${it.vtt?'on':''}">${it.vtt?'subtitles':'no subs'}</span>` +
       `<span class="tag meta ${it.meta?'on':''}">${it.meta?('meta·'+it.metaType):'no meta'}</span>`;
     div.appendChild(tags);
@@ -505,15 +524,15 @@ function renderSubs(txt){
 }
 function tick(){
   if (showClock && activeIdx >= 0){
-    const tc = fmtTime(video.currentTime) + '|' + fmtTime(video.duration);
+    const tc = fmtTime(curTime()) + '|' + fmtTime(curDur());
     if (tc !== lastClock){
-      clockEl.innerHTML = fmtTime(video.currentTime) +
-        ' <span class="dur">/ ' + fmtTime(video.duration) + '</span>';
+      clockEl.innerHTML = fmtTime(curTime()) +
+        ' <span class="dur">/ ' + fmtTime(curDur()) + '</span>';
       lastClock = tc;
     }
   }
   if (showSubs && cues.length){
-    const t = video.currentTime;
+    const t = curTime();
     const cue = cues.find(c => t >= c.start && t <= c.end);
     const txt = cue ? cue.text : '';
     if (txt !== lastCueText){
@@ -550,21 +569,7 @@ let curMetaText = null, curMetaType = null;
 function updateClockVisibility(){
   clockEl.classList.toggle('hide', !(showClock && activeIdx >= 0));
 }
-async function load(i){
-  const it = items[i];
-  if (!it) return;
-  activeIdx = i;
-  curKey = it.dir + '||' + it.name;
-  renderList();
-  placeholder.classList.add('hidden');
-  lastClock = null;
-  updateClockVisibility();
-
-  if (curObjUrl) URL.revokeObjectURL(curObjUrl);
-  curObjUrl = URL.createObjectURL(it.video);
-  video.src = curObjUrl;
-  video.play().catch(()=>{});
-
+async function loadSides(it){
   cues = [];
   lastCueText = null;
   subsEl.innerHTML = '';
@@ -579,10 +584,140 @@ async function load(i){
   }
   renderMeta(curMetaText, curMetaType);
 }
+async function load(i){
+  const it = items[i];
+  if (!it) return;
+  activeIdx = i;
+  curKey = it.dir + '||' + it.name;
+  renderList();
+  placeholder.classList.add('hidden');
+  lastClock = null;
+  updateClockVisibility();
+
+  if (it.type === 'yt'){
+    if (curObjUrl){ URL.revokeObjectURL(curObjUrl); curObjUrl = null; }
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    video.classList.add('hidden');
+    ytwrap.classList.remove('hidden');
+    playYouTube(it.ytId);
+  } else {
+    stopYouTube();
+    ytwrap.classList.add('hidden');
+    video.classList.remove('hidden');
+    if (curObjUrl) URL.revokeObjectURL(curObjUrl);
+    curObjUrl = URL.createObjectURL(it.video);
+    video.src = curObjUrl;
+    video.play().catch(()=>{});
+  }
+
+  await loadSides(it);
+}
+
+/* ---------- YouTube (official IFrame Player API) ---------- */
+const ytwrap = $('ytwrap');
+let ytPlayer = null, ytReady = false, ytApiPromise = null, ytPendingId = null;
+
+function parseYouTubeId(text){
+  text = (text || '').trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(text)) return text;   // bare video ID
+  let u;
+  try { u = new URL(text); } catch(e){ return null; }
+  const host = u.hostname.replace(/^(www\.|m\.|music\.)/,'');
+  let id = null;
+  if (host === 'youtu.be') id = u.pathname.slice(1).split('/')[0];
+  else if (host === 'youtube.com' || host === 'youtube-nocookie.com'){
+    id = u.searchParams.get('v');
+    if (!id){
+      const m = u.pathname.match(/^\/(?:embed|shorts|live|v)\/([A-Za-z0-9_-]{11})/);
+      if (m) id = m[1];
+    }
+  }
+  return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+}
+
+function loadYtApi(){
+  if (ytApiPromise) return ytApiPromise;
+  ytApiPromise = new Promise((resolve, reject) => {
+    window.onYouTubeIframeAPIReady = resolve;
+    const s = document.createElement('script');
+    s.src = 'https://www.youtube.com/iframe_api';
+    s.onerror = () => { ytApiPromise = null; reject(new Error('yt api load failed')); };
+    document.head.appendChild(s);
+  });
+  return ytApiPromise;
+}
+
+const YT_MSG_FILE = 'YouTube blocks players on pages opened as local files (no referrer — error 153). ' +
+  'Use the hosted app at nipunbatra.github.io/video-subtitle-overlay/app.html, or serve this file over http ' +
+  '(e.g. "python3 -m http.server" then open http://localhost:8000/app.html). Local videos work fine either way.';
+const YT_ERRORS = {
+  2: 'Invalid YouTube video ID.',
+  5: 'This YouTube video cannot be played here.',
+  100: 'YouTube video not found (removed or private).',
+  101: 'The owner of this video does not allow embedding it outside YouTube.',
+  150: 'The owner of this video does not allow embedding it outside YouTube.',
+  153: YT_MSG_FILE,
+};
+function ytError(msg){
+  ytwrap.classList.add('hidden');
+  placeholder.textContent = msg;
+  placeholder.classList.remove('hidden');
+}
+
+async function playYouTube(id){
+  if (location.protocol === 'file:'){ ytError(YT_MSG_FILE); return; }
+  try { await loadYtApi(); }
+  catch(e){ ytError('Could not load the YouTube player — check your internet connection.'); return; }
+  const cur = items[activeIdx];
+  if (!cur || cur.ytId !== id) return;   // user switched away while the API loaded
+  if (!ytPlayer){
+    ytPlayer = new YT.Player('ytplayer', {
+      videoId: id,
+      playerVars: { autoplay: 1, playsinline: 1, rel: 0 },
+      events: {
+        onReady: () => {
+          ytReady = true;
+          if (ytPendingId){ ytPlayer.loadVideoById(ytPendingId); ytPendingId = null; }
+        },
+        onError: e => { ytError(YT_ERRORS[e.data] || 'YouTube playback error.'); },
+      },
+    });
+  } else if (ytReady){
+    ytPlayer.loadVideoById(id);
+  } else {
+    ytPendingId = id;   // player still initialising — onReady picks this up
+  }
+}
+function stopYouTube(){
+  ytPendingId = null;
+  if (ytPlayer && ytReady){ try { ytPlayer.stopVideo(); } catch(e){} }
+}
+function addYouTube(id){
+  let idx = items.findIndex(it => it.type === 'yt' && it.ytId === id);
+  if (idx < 0){
+    items.push({ name: id, dir: '', type: 'yt', ytId: id, video: null, vtt: null, meta: null, metaType: null });
+    items.sort((a,b)=> (a.dir+a.name).localeCompare(b.dir+b.name));
+    idx = items.findIndex(it => it.type === 'yt' && it.ytId === id);
+  }
+  load(idx);
+}
+
+const isYt = () => activeIdx >= 0 && items[activeIdx].type === 'yt';
+function curTime(){ return isYt() ? (ytReady ? ytPlayer.getCurrentTime() : 0) : video.currentTime; }
+function curDur(){ return isYt() ? (ytReady ? ytPlayer.getDuration() : 0) : video.duration; }
 
 /* ---------- controls ---------- */
 $('dirInput').onchange = e => addFiles(e.target.files);
 $('fileInput').onchange = e => addFiles(e.target.files);
+$('ytAdd').onclick = () => {
+  const url = prompt('Paste a YouTube link (or 11-character video ID):');
+  if (!url) return;
+  const id = parseYouTubeId(url);
+  if (!id){ alert('Could not find a YouTube video ID in that link.'); return; }
+  addYouTube(id);
+};
 
 const setLbl = (id, text) => { $(id).querySelector('.lbl').textContent = text; };
 
@@ -739,6 +874,12 @@ $('moveToggle').onclick = () => setMoving(!movingOn);
 });
 function togglePlay(){
   if (activeIdx < 0) return;
+  if (isYt()){
+    if (!ytReady) return;
+    if (ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
+    else ytPlayer.playVideo();
+    return;
+  }
   if (video.paused) video.play().catch(()=>{}); else video.pause();
 }
 
@@ -797,7 +938,9 @@ document.addEventListener('drop', async e => {
       if (files.length){ addFiles(files); return; }
     }
   }
-  if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+  if (e.dataTransfer.files.length){ addFiles(e.dataTransfer.files); return; }
+  const id = parseYouTubeId(e.dataTransfer.getData('text'));   // a YouTube URL dragged onto the page
+  if (id) addYouTube(id);
 });
 
 /* ---------- metadata builder ---------- */
