@@ -702,8 +702,9 @@ function loadGoogleConfig(){
     const legacy = JSON.parse(localStorage.getItem(LEGACY_GOOGLE_CONFIG_KEY) || 'null');
     // Keep only the public client ID, then purge the retired Picker object
     // because it may contain the exposed API key.
-    if (!stored && legacy && typeof legacy.clientId === 'string'){
-      stored = { clientId: legacy.clientId };
+    const legacyChecked = legacy && validateGoogleConfig(legacy.clientId);
+    if (!stored && legacyChecked && legacyChecked.valid){
+      stored = { clientId: legacyChecked.clientId };
       localStorage.setItem(GOOGLE_CONFIG_KEY, JSON.stringify(stored));
     }
     localStorage.removeItem(LEGACY_GOOGLE_CONFIG_KEY);
