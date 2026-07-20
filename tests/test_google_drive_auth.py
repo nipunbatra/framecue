@@ -163,11 +163,16 @@ def test_hosted_config_is_ready_without_visitor_configuration_or_api_key(app):
     assert "Ready" in app.text_content("#driveStatus")
 
 
-def test_retired_picker_configuration_is_purged(app):
-    app.evaluate("localStorage.setItem('vso-google-config-v1', JSON.stringify({clientId:'old',apiKey:'AIza-old'}))")
+def test_retired_picker_configuration_migrates_client_id_and_purges_key(app):
+    app.evaluate("""([clientId, retiredKey]) => localStorage.setItem(
+        'vso-google-config-v1',
+        JSON.stringify({clientId, apiKey: retiredKey, accessToken: 'must-not-survive'})
+    )""", [CLIENT_ID, "AI" + "za" + "A" * 35])
     app.reload()
     assert app.evaluate("localStorage.getItem('vso-google-config-v1')") is None
-    assert app.evaluate("googleConfig.clientId.startsWith('754571415429-')")
+    stored = json.loads(app.evaluate("localStorage.getItem('vso-google-config-v2')"))
+    assert stored == {"clientId": CLIENT_ID}
+    assert "must-not-survive" not in app.evaluate("JSON.stringify({...localStorage})")
 
 
 def test_deployment_setup_collapses_after_valid_configuration(app):
@@ -260,6 +265,7 @@ def test_download_raw_html_from_menu(app):
     html = pathlib.Path(download.path()).read_text()
     assert "<!DOCTYPE html>" in html
     assert 'id="dirInput"' in html
+    assert re.search(r"AI" + r"za[0-9A-Za-z_-]{30,}", html) is None
 
 
 def test_menu_keyboard_navigation_and_escape(app):
